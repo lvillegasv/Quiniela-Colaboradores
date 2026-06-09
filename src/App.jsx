@@ -374,13 +374,13 @@ export default function App() {
   useEffect(() => {
     if (user) return;
     const load = async () => {
-      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido");
+      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado");
       const { data: preds } = await supabase.from("predicciones").select("*");
       const { data: resultados } = await supabase.from("resultados").select("*");
       if (!usuarios || !preds) return;
       const resMap = {};
       (resultados||[]).forEach(r => { resMap[r.match_id] = { home:r.home, away:r.away }; });
-      const standing = usuarios.map(u => {
+      const standing = usuarios.filter(u => !u.bloqueado).map(u => {
         const userPreds = preds.filter(p => p.user_email === u.email);
         const pts = userPreds.reduce((total, p) => {
           const res = resMap[p.match_id];
@@ -1065,13 +1065,13 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
 
   React.useEffect(() => {
     const load = async () => {
-      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bono_campeon, bono_goleador, bono_mvp, bonos_completado");
+      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bono_campeon, bono_goleador, bono_mvp, bonos_completado, bloqueado");
       const { data: preds } = await supabase.from("predicciones").select("*");
       const { data: resultados } = await supabase.from("resultados").select("*");
       if (!usuarios || !preds) { setLoading(false); return; }
       const resMap = {};
       (resultados||[]).forEach(r => { resMap[r.match_id] = { home:r.home, away:r.away }; });
-      const data = usuarios.map(u => {
+      const data = usuarios.filter(u => !u.bloqueado).map(u => {
         const userPreds = preds.filter(p => p.user_email === u.email);
         const pts = userPreds.reduce((total, p) => {
           const res = resMap[p.match_id];
@@ -1422,6 +1422,183 @@ function ChatView({ user }) {
   );
 }
 
+// ─── PREDICCIONES ADMIN ───────────────────────────────────────────────────────
+function PrediccionesAdmin({ matches, calcPoints }) {
+  const [usuarios, setUsuarios] = React.useState([]);
+  const [preds, setPreds] = React.useState({});
+  const [resultados, setResultados] = React.useState({});
+  const [loading, setLoading] = React.useState(true);
+  const [search, setSearch] = React.useState("");
+  const [vistaActiva, setVistaActiva] = React.useState("predicciones"); // "predicciones" | "bonos"
+
+  React.useEffect(() => {
+    const load = async () => {
+      const { data: us } = await supabase.from("usuarios").select("email, nombre, primer_apellido, segundo_apellido, departamento, bono_campeon, bono_goleador, bono_mvp, bonos_completado, bloqueado").order("nombre");
+      const { data: pr } = await supabase.from("predicciones").select("*");
+      const { data: re } = await supabase.from("resultados").select("*");
+      if (us) setUsuarios(us.filter(u => !u.bloqueado));
+      if (pr) {
+        const map = {};
+        pr.forEach(p => {
+          if (!map[p.user_email]) map[p.user_email] = {};
+          map[p.user_email][p.match_id] = { home: p.home, away: p.away };
+        });
+        setPreds(map);
+      }
+      if (re) {
+        const map = {};
+        re.forEach(r => { map[r.match_id] = { home: r.home, away: r.away }; });
+        setResultados(map);
+      }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const playedMatches = matches.filter(m => resultados[m.id] !== undefined);
+  const filteredUsers = usuarios.filter(u => {
+    const s = search.toLowerCase();
+    return `${u.nombre} ${u.primer_apellido}`.toLowerCase().includes(s) || (u.email||"").toLowerCase().includes(s) || (u.departamento||"").toLowerCase().includes(s);
+  });
+
+  const totalPts = (email) => playedMatches.reduce((t, m) => {
+    const p = preds[email]?.[m.id];
+    const r = resultados[m.id];
+    return t + (p && r ? calcPoints(p, r) : 0);
+  }, 0);
+
+  const exportExcel = () => {
+    const esc = v => String(v||"—").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const matchHeaders = playedMatches.map(m => `<th>${m.home} vs ${m.away}<br/>${m.date}</th>`).join("");
+    const rows = filteredUsers.map(u => {
+      const matchCells = playedMatches.map(m => {
+        const p = preds[u.email]?.[m.id];
+        const r = resultados[m.id];
+        const pts = p && r ? calcPoints(p, r) : null;
+        return `<td>${p ? `${p.home}-${p.away}` : "—"} ${pts !== null ? `(${pts}p)` : ""}</td>`;
+      }).join("");
+      return `<tr><td>${esc(u.nombre)} ${esc(u.primer_apellido)}</td><td>${esc(u.departamento)}</td><td>${totalPts(u.email)}</td>${matchCells}<td>${esc(u.bono_campeon)}</td><td>${esc(u.bono_goleador)}</td><td>${esc(u.bono_mvp)}</td></tr>`;
+    }).join("");
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"/><style>th{background:#1a9e3f;color:#fff;font-weight:bold;font-size:11px}th,td{border:1px solid #ccc;padding:6px;font-size:11px}</style></head><body><h2>Predicciones Quiniela MFA Colaboradores</h2><table><thead><tr><th>Colaborador</th><th>Departamento</th><th>Pts Total</th>${matchHeaders}<th>🏆 Campeón</th><th>⚽ Goleador</th><th>🌟 MVP</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+    const blob = new Blob([html], { type:"application/vnd.ms-excel;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "predicciones_colaboradores.xls";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  if (loading) return <div style={{...card,padding:40,textAlign:"center",color:G.muted,borderRadius:12}}>Cargando datos...</div>;
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",gap:6}}>
+          {[["predicciones","🎯 Predicciones"],["bonos","⭐ Bonificaciones"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setVistaActiva(v)} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${vistaActiva===v?G.green:G.border}`,background:vistaActiva===v?G.green:G.card,color:"#fff",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>{l}</button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar colaborador..." style={{...inp,width:220,padding:"8px 12px"}}/>
+          <button onClick={exportExcel} style={{background:G.green,border:"none",borderRadius:8,padding:"8px 14px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>📥 Exportar Excel</button>
+        </div>
+      </div>
+
+      {/* Vista Predicciones */}
+      {vistaActiva === "predicciones" && (
+        <div style={{overflowX:"auto"}} className="admin-pred-table">
+          <table style={{borderCollapse:"collapse",fontSize:12,minWidth:800}}>
+            <thead>
+              <tr style={{background:G.card2}}>
+                <th style={{padding:"10px 14px",textAlign:"left",color:G.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",position:"sticky",left:0,background:G.card2,zIndex:1,whiteSpace:"nowrap"}}>Colaborador</th>
+                <th style={{padding:"10px 10px",textAlign:"center",color:G.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap"}}>Dpto.</th>
+                <th style={{padding:"10px 10px",textAlign:"center",color:G.green,fontSize:11,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap"}}>Pts</th>
+                {playedMatches.length === 0 ? (
+                  <th style={{padding:"10px 14px",textAlign:"center",color:G.muted,fontSize:11}}>Sin partidos publicados aún</th>
+                ) : playedMatches.map(m=>(
+                  <th key={m.id} style={{padding:"8px 6px",textAlign:"center",color:G.muted,fontSize:10,fontWeight:700,whiteSpace:"nowrap",minWidth:80}}>
+                    <div>{m.homeTeam.flag}{m.home}</div>
+                    <div style={{color:G.green}}>vs</div>
+                    <div>{m.away}{m.awayTeam.flag}</div>
+                    <div style={{color:G.green,fontWeight:900}}>{resultados[m.id]?.home}-{resultados[m.id]?.away}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((u,i)=>{
+                const total = totalPts(u.email);
+                return (
+                  <tr key={u.email} style={{borderBottom:`1px solid ${G.border}`,background:i%2===0?"transparent":G.card2}}>
+                    <td style={{padding:"10px 14px",position:"sticky",left:0,background:i%2===0?G.bg:G.card2,zIndex:1,whiteSpace:"nowrap"}}>
+                      <div style={{fontWeight:700,color:"#fff",fontSize:13}}>{u.nombre} {u.primer_apellido}</div>
+                      <div style={{fontSize:10,color:G.muted}}>{u.email}</div>
+                    </td>
+                    <td style={{padding:"10px 8px",textAlign:"center",fontSize:11,color:G.gray,whiteSpace:"nowrap"}}>{u.departamento||"—"}</td>
+                    <td style={{padding:"10px 8px",textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:900,color:G.green}}>{total}</td>
+                    {playedMatches.map(m=>{
+                      const p = preds[u.email]?.[m.id];
+                      const r = resultados[m.id];
+                      const pts = p && r ? calcPoints(p, r) : null;
+                      return (
+                        <td key={m.id} style={{padding:"8px 6px",textAlign:"center"}}>
+                          {p ? (
+                            <div>
+                              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700,color:"#fff"}}>{p.home}-{p.away}</div>
+                              <div style={{fontSize:11,fontWeight:700,color:pts===5?G.green:pts>0?"#ffb400":G.muted}}>{pts !== null ? `${pts}p` : "—"}</div>
+                            </div>
+                          ) : (
+                            <span style={{color:G.muted,fontSize:13}}>—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filteredUsers.length === 0 && <div style={{textAlign:"center",padding:"40px 0",color:G.muted}}>Sin resultados.</div>}
+        </div>
+      )}
+
+      {/* Vista Bonificaciones */}
+      {vistaActiva === "bonos" && (
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
+            <thead>
+              <tr style={{background:G.card2}}>
+                {["Colaborador","Departamento","🏆 Campeón (20p)","⚽ Goleador (10p)","🌟 MVP (10p)","Estado"].map(h=>(
+                  <th key={h} style={{padding:"10px 14px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,color:G.muted,whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((u,i)=>(
+                <tr key={u.email} style={{borderBottom:`1px solid ${G.border}`,background:i%2===0?"transparent":G.card2}}>
+                  <td style={{padding:"12px 14px"}}>
+                    <div style={{fontWeight:700,color:"#fff",fontSize:13}}>{u.nombre} {u.primer_apellido}</div>
+                    <div style={{fontSize:10,color:G.muted}}>{u.email}</div>
+                  </td>
+                  <td style={{padding:"12px 14px",fontSize:12,color:G.gray}}>{u.departamento||"—"}</td>
+                  <td style={{padding:"12px 14px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700,color:u.bono_campeon?G.green:G.muted}}>{u.bono_campeon||"—"}</td>
+                  <td style={{padding:"12px 14px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700,color:u.bono_goleador?G.green:G.muted}}>{u.bono_goleador||"—"}</td>
+                  <td style={{padding:"12px 14px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700,color:u.bono_mvp?G.green:G.muted}}>{u.bono_mvp||"—"}</td>
+                  <td style={{padding:"12px 14px"}}>
+                    <span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:100,border:"1px solid",
+                      ...(u.bonos_completado?{borderColor:"rgba(26,158,63,.4)",background:"rgba(26,158,63,.1)",color:G.green}:{borderColor:"rgba(255,180,0,.4)",background:"rgba(255,180,0,.1)",color:"#ffb400"})
+                    }}>{u.bonos_completado?"✅ Completo":"⏳ Pendiente"}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredUsers.length === 0 && <div style={{textAlign:"center",padding:"40px 0",color:G.muted}}>Sin resultados.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
 function AdminView({ matches, updateResult, publishResult, clearResult, adminResults, calcPoints }) {
   const [section, setSection] = React.useState("scores");
@@ -1487,13 +1664,14 @@ function AdminView({ matches, updateResult, publishResult, clearResult, adminRes
   return (
     <div>
       <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}} className="admin-tabs">
-        {[["scores","⚽ Marcadores"],["users","👥 Colaboradores"],["banners","🖼️ Banners"],["log","🔍 Log"]].map(([s,l])=>(
+        {[["scores","⚽ Marcadores"],["predicciones","📋 Predicciones"],["users","👥 Colaboradores"],["banners","🖼️ Banners"],["log","🔍 Log"]].map(([s,l])=>(
           <button key={s} onClick={()=>setSection(s)} style={{padding:"10px 18px",borderRadius:8,border:`1px solid ${section===s?G.green:G.border}`,background:section===s?G.green:G.card,color:"#fff",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700,letterSpacing:1,textTransform:"uppercase",cursor:"pointer"}}>{l}</button>
         ))}
       </div>
 
       {section==="banners" ? <BannersAdmin/> :
        section==="log" ? <AccessLogView/> :
+       section==="predicciones" ? <PrediccionesAdmin matches={matches} calcPoints={calcPoints}/> :
        section==="scores" ? (
         <div>
           <div style={{...card,padding:16,borderRadius:12,marginBottom:16}}>
