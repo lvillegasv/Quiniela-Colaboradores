@@ -311,6 +311,8 @@ export default function App() {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotStatus, setForgotStatus] = useState("");
   const [isSendingForgot, setIsSendingForgot] = useState(false);
+  const [cedula, setCedula] = useState("");
+  const [cedulaStatus, setCedulaStatus] = useState(""); // "loading" | "ok" | "error"
   const [firstName, setFirstName] = useState("");
   const [lastName1, setLastName1] = useState("");
   const [lastName2, setLastName2] = useState("");
@@ -392,6 +394,29 @@ export default function App() {
     load();
   }, [user]);
 
+  // Consulta cédula al TSE
+  const buscarCedula = async (num) => {
+    const clean = num.replace(/\D/g, "");
+    if (clean.length < 9) { setCedulaStatus(""); setFirstName(""); setLastName1(""); setLastName2(""); return; }
+    setCedulaStatus("loading");
+    try {
+      const res = await fetch(`https://apis.gometa.org/cedulas/${clean}`);
+      if (!res.ok) throw new Error("No encontrado");
+      const data = await res.json();
+      if (data && data.nombre) {
+        setFirstName(data.nombre || "");
+        setLastName1(data.apellido1 || "");
+        setLastName2(data.apellido2 || "");
+        setCedulaStatus("ok");
+      } else {
+        throw new Error("Sin datos");
+      }
+    } catch {
+      setCedulaStatus("error");
+      setFirstName(""); setLastName1(""); setLastName2("");
+    }
+  };
+
   // Login
   const handleLogin = async () => {
     setError("");
@@ -416,9 +441,11 @@ export default function App() {
     finally { setIsLoading(false); }
   };
 
-  // Registro (simplificado — solo nombre y correo)
+  // Registro
   const handleRegister = async () => {
     setError("");
+    if (!cedula.trim()) { setError("Ingresa tu número de cédula."); return; }
+    if (cedulaStatus !== "ok") { setError("Consultá tu cédula primero para autocompletar el nombre."); return; }
     if (!email.trim()||!password.trim()||!firstName.trim()||!lastName1.trim()||!lastName2.trim()) {
       setError("Completa todos los campos antes de crear el usuario."); return;
     }
@@ -431,6 +458,7 @@ export default function App() {
         email:email.trim().toLowerCase(), password:password.trim(),
         nombre:firstName.trim(), primer_apellido:lastName1.trim(), segundo_apellido:lastName2.trim(),
         nombre_comercial:`${firstName.trim()} ${lastName1.trim()}`,
+        cedula: cedula.replace(/\D/g,""),
       });
       if (ie) throw new Error(ie.message);
       const ipR = await fetch("https://api.ipify.org?format=json").catch(()=>({json:()=>({ip:"desconocida"})}));
@@ -674,11 +702,49 @@ export default function App() {
                   </form>
                 ) : (
                   <form onSubmit={e=>{e.preventDefault();handleRegister();}}>
+                    <Divider label="Verificación de identidad"/>
+                    {/* Campo cédula */}
+                    <div style={{marginBottom:14}}>
+                      <label style={lbl}>Número de cédula</label>
+                      <div style={{display:"flex",gap:8}}>
+                        <input
+                          value={cedula}
+                          onChange={e=>{ setCedula(e.target.value); setCedulaStatus(""); setFirstName(""); setLastName1(""); setLastName2(""); }}
+                          placeholder="Ej: 123456789"
+                          inputMode="numeric"
+                          style={{...inp,flex:1}}
+                        />
+                        <button
+                          type="button"
+                          onClick={()=>buscarCedula(cedula)}
+                          disabled={cedulaStatus==="loading"||cedula.replace(/\D/g,"").length<9}
+                          style={{background:G.green,border:"none",borderRadius:8,padding:"0 14px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",opacity:cedula.replace(/\D/g,"").length<9?.5:1}}
+                        >
+                          {cedulaStatus==="loading"?"Buscando...":"Consultar"}
+                        </button>
+                      </div>
+                      {cedulaStatus==="ok"&&(
+                        <div style={{marginTop:6,fontSize:12,color:G.green}}>✅ Datos encontrados en el Registro Civil</div>
+                      )}
+                      {cedulaStatus==="error"&&(
+                        <div style={{marginTop:6,fontSize:12,color:"#ff5050"}}>⚠️ Cédula no encontrada. Verificá el número e intentá de nuevo.</div>
+                      )}
+                    </div>
+                    {/* Nombre autocompletado (readonly) */}
                     <Divider label="Datos del colaborador"/>
-                    <Field label="Nombre" value={firstName} onChange={setFirstName} placeholder="Tu nombre"/>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                      <Field label="Primer apellido" value={lastName1} onChange={setLastName1} placeholder="Primer apellido"/>
-                      <Field label="Segundo apellido" value={lastName2} onChange={setLastName2} placeholder="Segundo apellido"/>
+                    <div style={{marginBottom:14}}>
+                      <label style={lbl}>Nombre</label>
+                      <input value={firstName} readOnly style={{...inp,color:cedulaStatus==="ok"?"#fff":G.muted,background:"rgba(255,255,255,.03)",cursor:"default"}} placeholder="Se completa automáticamente"/>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                      <div>
+                        <label style={lbl}>Primer apellido</label>
+                        <input value={lastName1} readOnly style={{...inp,color:cedulaStatus==="ok"?"#fff":G.muted,background:"rgba(255,255,255,.03)",cursor:"default"}} placeholder="Automático"/>
+                      </div>
+                      <div>
+                        <label style={lbl}>Segundo apellido</label>
+                        <input value={lastName2} readOnly style={{...inp,color:cedulaStatus==="ok"?"#fff":G.muted,background:"rgba(255,255,255,.03)",cursor:"default"}} placeholder="Automático"/>
+                      </div>
                     </div>
                     <Divider label="Acceso"/>
                     <Field label="Correo electrónico" value={email} onChange={setEmail} placeholder="tu@correo.com" type="email"/>
@@ -690,7 +756,7 @@ export default function App() {
                         Declaro que soy colaborador activo de MFA o El Colono. Acepto las <span style={{color:G.green,fontWeight:700}}>reglas y condiciones</span> de la Quiniela MFA Colaboradores.
                       </label>
                     </div>
-                    <button type="submit" disabled={isLoading||!aceptoTerminos} style={{...greenBtn,opacity:(isLoading||!aceptoTerminos)?.5:1,marginTop:4}}>{isLoading?"Creando cuenta...":"Crear usuario"}</button>
+                    <button type="submit" disabled={isLoading||!aceptoTerminos||cedulaStatus!=="ok"} style={{...greenBtn,opacity:(isLoading||!aceptoTerminos||cedulaStatus!=="ok")?.5:1,marginTop:4}}>{isLoading?"Creando cuenta...":"Crear usuario"}</button>
                   </form>
                 )}
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:14,fontSize:12,color:G.muted}}>🔒 Tus datos están protegidos</div>
