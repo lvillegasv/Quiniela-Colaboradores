@@ -316,6 +316,7 @@ export default function App() {
   const [firstName, setFirstName] = useState("");
   const [lastName1, setLastName1] = useState("");
   const [lastName2, setLastName2] = useState("");
+  const [departamento, setDepartamento] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [aceptoTerminos, setAceptoTerminos] = useState(false);
   const [error, setError] = useState("");
@@ -394,16 +395,20 @@ export default function App() {
     load();
   }, [user]);
 
-  // Consulta cédula al TSE
+  // Consulta cédula al TSE — se dispara automático al completar 9 dígitos
   const buscarCedula = async (num) => {
     const clean = num.replace(/\D/g, "");
-    if (clean.length < 9) { setCedulaStatus(""); setFirstName(""); setLastName1(""); setLastName2(""); return; }
+    if (clean.length < 9) {
+      setCedulaStatus(""); setFirstName(""); setLastName1(""); setLastName2(""); return;
+    }
     setCedulaStatus("loading");
     try {
       const res = await fetch(`https://apis.gometa.org/cedulas/${clean}`);
       if (!res.ok) throw new Error("No encontrado");
       const data = await res.json();
-      if (data && data.nombre) {
+      // La API de gometa devuelve: { nombre, apellido1, apellido2 }
+      // "nombre" en esa API es solo el nombre, no el nombre completo
+      if (data && (data.nombre || data.apellido1)) {
         setFirstName(data.nombre || "");
         setLastName1(data.apellido1 || "");
         setLastName2(data.apellido2 || "");
@@ -414,6 +419,16 @@ export default function App() {
     } catch {
       setCedulaStatus("error");
       setFirstName(""); setLastName1(""); setLastName2("");
+    }
+  };
+
+  const handleCedulaChange = (val) => {
+    setCedula(val);
+    const clean = val.replace(/\D/g, "");
+    if (clean.length >= 9) {
+      buscarCedula(val); // disparo automático
+    } else {
+      setCedulaStatus(""); setFirstName(""); setLastName1(""); setLastName2("");
     }
   };
 
@@ -445,10 +460,11 @@ export default function App() {
   const handleRegister = async () => {
     setError("");
     if (!cedula.trim()) { setError("Ingresa tu número de cédula."); return; }
-    if (cedulaStatus !== "ok") { setError("Consultá tu cédula primero para autocompletar el nombre."); return; }
-    if (!email.trim()||!password.trim()||!firstName.trim()||!lastName1.trim()||!lastName2.trim()) {
+    if (cedulaStatus !== "ok") { setError("Esperá a que se verifique la cédula."); return; }
+    if (!email.trim()||!password.trim()||!firstName.trim()||!lastName1.trim()) {
       setError("Completa todos los campos antes de crear el usuario."); return;
     }
+    if (!departamento) { setError("Seleccioná tu departamento."); return; }
     if (password.trim().length < 6) { setError("La contraseña debe tener al menos 6 caracteres."); return; }
     setIsLoading(true);
     try {
@@ -459,6 +475,7 @@ export default function App() {
         nombre:firstName.trim(), primer_apellido:lastName1.trim(), segundo_apellido:lastName2.trim(),
         nombre_comercial:`${firstName.trim()} ${lastName1.trim()}`,
         cedula: cedula.replace(/\D/g,""),
+        departamento,
       });
       if (ie) throw new Error(ie.message);
       const ipR = await fetch("https://api.ipify.org?format=json").catch(()=>({json:()=>({ip:"desconocida"})}));
@@ -703,49 +720,62 @@ export default function App() {
                 ) : (
                   <form onSubmit={e=>{e.preventDefault();handleRegister();}}>
                     <Divider label="Verificación de identidad"/>
-                    {/* Campo cédula */}
+
+                    {/* Cédula — disparo automático */}
                     <div style={{marginBottom:14}}>
                       <label style={lbl}>Número de cédula</label>
-                      <div style={{display:"flex",gap:8}}>
+                      <div style={{position:"relative"}}>
                         <input
                           value={cedula}
-                          onChange={e=>{ setCedula(e.target.value); setCedulaStatus(""); setFirstName(""); setLastName1(""); setLastName2(""); }}
+                          onChange={e=>handleCedulaChange(e.target.value)}
                           placeholder="Ej: 123456789"
                           inputMode="numeric"
-                          style={{...inp,flex:1}}
+                          maxLength={12}
+                          style={{...inp, paddingRight:36}}
                         />
-                        <button
-                          type="button"
-                          onClick={()=>buscarCedula(cedula)}
-                          disabled={cedulaStatus==="loading"||cedula.replace(/\D/g,"").length<9}
-                          style={{background:G.green,border:"none",borderRadius:8,padding:"0 14px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",opacity:cedula.replace(/\D/g,"").length<9?.5:1}}
-                        >
-                          {cedulaStatus==="loading"?"Buscando...":"Consultar"}
-                        </button>
+                        {cedulaStatus==="loading" && (
+                          <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,color:G.muted}}>⏳</span>
+                        )}
+                        {cedulaStatus==="ok" && (
+                          <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14}}>✅</span>
+                        )}
+                        {cedulaStatus==="error" && (
+                          <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14}}>❌</span>
+                        )}
                       </div>
-                      {cedulaStatus==="ok"&&(
-                        <div style={{marginTop:6,fontSize:12,color:G.green}}>✅ Datos encontrados en el Registro Civil</div>
-                      )}
-                      {cedulaStatus==="error"&&(
-                        <div style={{marginTop:6,fontSize:12,color:"#ff5050"}}>⚠️ Cédula no encontrada. Verificá el número e intentá de nuevo.</div>
-                      )}
+                      {cedulaStatus==="loading" && <div style={{marginTop:5,fontSize:11,color:G.muted}}>Consultando el Registro Civil...</div>}
+                      {cedulaStatus==="ok" && <div style={{marginTop:5,fontSize:11,color:G.green}}>✅ Datos verificados en el Registro Civil</div>}
+                      {cedulaStatus==="error" && <div style={{marginTop:5,fontSize:11,color:"#ff5050"}}>❌ Cédula no encontrada. Verificá el número.</div>}
                     </div>
-                    {/* Nombre autocompletado (readonly) */}
+
+                    {/* Datos autocompletados */}
                     <Divider label="Datos del colaborador"/>
                     <div style={{marginBottom:14}}>
                       <label style={lbl}>Nombre</label>
-                      <input value={firstName} readOnly style={{...inp,color:cedulaStatus==="ok"?"#fff":G.muted,background:"rgba(255,255,255,.03)",cursor:"default"}} placeholder="Se completa automáticamente"/>
+                      <input value={firstName} readOnly style={{...inp, background:"rgba(255,255,255,.03)", color: cedulaStatus==="ok"?"#fff":G.muted, cursor:"default"}} placeholder="Se completa automáticamente"/>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
                       <div>
                         <label style={lbl}>Primer apellido</label>
-                        <input value={lastName1} readOnly style={{...inp,color:cedulaStatus==="ok"?"#fff":G.muted,background:"rgba(255,255,255,.03)",cursor:"default"}} placeholder="Automático"/>
+                        <input value={lastName1} readOnly style={{...inp, background:"rgba(255,255,255,.03)", color: cedulaStatus==="ok"?"#fff":G.muted, cursor:"default"}} placeholder="Automático"/>
                       </div>
                       <div>
                         <label style={lbl}>Segundo apellido</label>
-                        <input value={lastName2} readOnly style={{...inp,color:cedulaStatus==="ok"?"#fff":G.muted,background:"rgba(255,255,255,.03)",cursor:"default"}} placeholder="Automático"/>
+                        <input value={lastName2} readOnly style={{...inp, background:"rgba(255,255,255,.03)", color: cedulaStatus==="ok"?"#fff":G.muted, cursor:"default"}} placeholder="Automático"/>
                       </div>
                     </div>
+
+                    {/* Departamento */}
+                    <div style={{marginBottom:14}}>
+                      <label style={lbl}>Departamento</label>
+                      <select value={departamento} onChange={e=>setDepartamento(e.target.value)} style={{...inp, cursor:"pointer"}}>
+                        <option value="">Seleccioná tu departamento...</option>
+                        {["Compras - Abastecimiento","Importaciones","Recursos Humanos","Finanzas","Logística","Comercial","Mercadeo"].map(d=>(
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     <Divider label="Acceso"/>
                     <Field label="Correo electrónico" value={email} onChange={setEmail} placeholder="tu@correo.com" type="email"/>
                     <Field label="Contraseña" value={password} onChange={setPassword} placeholder="Mínimo 6 caracteres" type="password"/>
@@ -756,7 +786,7 @@ export default function App() {
                         Declaro que soy colaborador activo de MFA o El Colono. Acepto las <span style={{color:G.green,fontWeight:700}}>reglas y condiciones</span> de la Quiniela MFA Colaboradores.
                       </label>
                     </div>
-                    <button type="submit" disabled={isLoading||!aceptoTerminos||cedulaStatus!=="ok"} style={{...greenBtn,opacity:(isLoading||!aceptoTerminos||cedulaStatus!=="ok")?.5:1,marginTop:4}}>{isLoading?"Creando cuenta...":"Crear usuario"}</button>
+                    <button type="submit" disabled={isLoading||!aceptoTerminos||cedulaStatus!=="ok"||!departamento} style={{...greenBtn,opacity:(isLoading||!aceptoTerminos||cedulaStatus!=="ok"||!departamento)?.5:1,marginTop:4}}>{isLoading?"Creando cuenta...":"Crear usuario"}</button>
                   </form>
                 )}
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:14,fontSize:12,color:G.muted}}>🔒 Tus datos están protegidos</div>
