@@ -290,7 +290,7 @@ function BonificacionesDisplay({ email }) {
   if (!bonos.bonos_completado) return <div style={{fontSize:13,color:"#ffb400"}}>⚠️ Aún no completadas.</div>;
   return (
     <div style={{display:"grid",gap:10}}>
-      {[["🏆 Campeón","20 pts",bonos.bono_campeon],["⚽ Goleador","10 pts",bonos.bono_goleador],["🌟 MVP","10 pts",bonos.bono_mvp]].map(([label,pts,valor])=>(
+      {[["🏆 Campeón","20 pts",bonos.bono_campeon],["⚽ Goleador","10 pts",bonos.bono_goleador],["🌟 Mejor Jugador","10 pts",bonos.bono_mvp]].map(([label,pts,valor])=>(
         <div key={label} style={{background:G.card2,border:`1px solid ${G.border}`,borderRadius:8,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{label}</div>
@@ -885,7 +885,7 @@ export default function App() {
               {[
                 ["🏆 Campeón del torneo","campeon","20 pts",bonosCampeon,setBonosCampeon,"campeon-list",SELECCIONES_MUNDIAL,null,null,null,null],
                 ["⚽ Goleador del torneo","goleador","10 pts",bonosGoleador,setBonosGoleador,"goleador-list",TOP_JUGADORES,bonosGoleador,bonosGoleadorOtro,setBonosGoleadorOtro,"Escribe el nombre del jugador..."],
-                ["🌟 MVP del torneo","mvp","10 pts",bonosMVP,setBonosMVP,"mvp-list",TOP_JUGADORES,bonosMVP,bonosMVPOtro,setBonosMVPOtro,"Escribe el nombre del jugador..."],
+                ["🌟 Mejor Jugador del torneo","Mejor Jugador","10 pts",bonosMVP,setBonosMVP,"mvp-list",TOP_JUGADORES,bonosMVP,bonosMVPOtro,setBonosMVPOtro,"Escribe el nombre del jugador..."],
               ].map(([title,,pts,val,setVal,listId,opts,checkOtro,otroVal,setOtro,otroPH])=>(
                 <div key={title} style={{background:G.card2,border:`1px solid ${G.border}`,borderRadius:12,padding:20,marginBottom:16}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -1479,7 +1479,7 @@ function PrediccionesAdmin({ matches, calcPoints }) {
       }).join("");
       return `<tr><td>${esc(u.nombre)} ${esc(u.primer_apellido)}</td><td>${esc(u.departamento)}</td><td>${totalPts(u.email)}</td>${matchCells}<td>${esc(u.bono_campeon)}</td><td>${esc(u.bono_goleador)}</td><td>${esc(u.bono_mvp)}</td></tr>`;
     }).join("");
-    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"/><style>th{background:#1a9e3f;color:#fff;font-weight:bold;font-size:11px}th,td{border:1px solid #ccc;padding:6px;font-size:11px}</style></head><body><h2>Predicciones Quiniela MFA Colaboradores</h2><table><thead><tr><th>Colaborador</th><th>Departamento</th><th>Pts Total</th>${matchHeaders}<th>🏆 Campeón</th><th>⚽ Goleador</th><th>🌟 MVP</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"/><style>th{background:#1a9e3f;color:#fff;font-weight:bold;font-size:11px}th,td{border:1px solid #ccc;padding:6px;font-size:11px}</style></head><body><h2>Predicciones Quiniela MFA Colaboradores</h2><table><thead><tr><th>Colaborador</th><th>Departamento</th><th>Pts Total</th>${matchHeaders}<th>🏆 Campeón</th><th>⚽ Goleador</th><th>🌟 Mejor Jugador</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
     const blob = new Blob([html], { type:"application/vnd.ms-excel;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "predicciones_colaboradores.xls";
@@ -1567,7 +1567,7 @@ function PrediccionesAdmin({ matches, calcPoints }) {
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
             <thead>
               <tr style={{background:G.card2}}>
-                {["Colaborador","Departamento","🏆 Campeón (20p)","⚽ Goleador (10p)","🌟 MVP (10p)","Estado"].map(h=>(
+                {["Colaborador","Departamento","🏆 Campeón (20p)","⚽ Goleador (10p)","🌟 Mejor Jugador (10p)","Estado"].map(h=>(
                   <th key={h} style={{padding:"10px 14px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,color:G.muted,whiteSpace:"nowrap"}}>{h}</th>
                 ))}
               </tr>
@@ -1819,7 +1819,7 @@ function RulesView() {
         ["Las predicciones deben ingresarse antes del inicio oficial de cada partido según el horario de Costa Rica (UTC-6).",""],
         ["Una vez iniciado el partido, las predicciones quedan bloqueadas automáticamente y no pueden modificarse.",""],
         ["Los resultados oficiales son los publicados al finalizar el tiempo reglamentario (90 minutos). No se consideran prórrogas ni penales para la fase de grupos.",""],
-        ["Las bonificaciones especiales (Campeón, Goleador, MVP) deben completarse antes del inicio del torneo (11 JUN).",""],
+        ["Las bonificaciones especiales (Campeón, Goleador, Mejor Jugador) deben completarse antes del inicio del torneo (11 JUN).",""],
       ])}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}} className="rules-grid">
@@ -1831,7 +1831,7 @@ function RulesView() {
         {seccion("Bonificaciones especiales","⭐",[
           ["Campeón del torneo","20 pts"],
           ["Goleador del torneo","10 pts"],
-          ["MVP del torneo","10 pts"],
+          ["Mejor Jugador del torneo","10 pts"],
         ])}
       </div>
 
