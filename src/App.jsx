@@ -792,7 +792,7 @@ export default function App() {
                       <label style={lbl}>Departamento</label>
                       <select value={departamento} onChange={e=>setDepartamento(e.target.value)} style={{...inp, cursor:"pointer"}}>
                         <option value="">Seleccioná tu departamento...</option>
-                        {["Compras - Abastecimiento","Importaciones","Recursos Humanos","Finanzas","Logística","Comercial","Mercadeo"].map(d=>(
+                        {["Compras","Recursos Humanos","Finanzas","Logística","Comercial","Mercadeo","Abastecimiento e Importaciones"].map(d=>(
                           <option key={d} value={d}>{d}</option>
                         ))}
                       </select>
