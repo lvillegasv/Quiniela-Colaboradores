@@ -681,7 +681,7 @@ export default function App() {
                 <span style={{fontSize:24}}>👷</span>
                 <div>
                   <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:17,fontWeight:700,color:G.green}}>Quiniela MFA · Colaboradores Internos</div>
-                  <div style={{fontSize:12,color:G.muted}}>Exclusiva para colaboradores de Mayoreo Ferretería y Acabados y El Colono.</div>
+                  <div style={{fontSize:12,color:G.muted}}>Exclusiva para colaboradores de Mayoreo Ferretería y Acabados.</div>
                 </div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}} className="landing-info-grid">
@@ -722,7 +722,7 @@ export default function App() {
                 <div style={{textAlign:"center",marginBottom:24}}>
                   <div style={{width:64,height:64,background:"rgba(26,158,63,.1)",border:`2px solid ${G.green}`,borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:28}}>🏆</div>
                   <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Ingresa a la quiniela</div>
-                  <div style={{fontSize:13,color:G.muted,marginTop:4}}>Solo colaboradores MFA · El Colono</div>
+                  <div style={{fontSize:13,color:G.muted,marginTop:4}}>Solo colaboradores MFA</div>
                 </div>
 
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:22}}>
@@ -792,7 +792,7 @@ export default function App() {
                       <label style={lbl}>Departamento</label>
                       <select value={departamento} onChange={e=>setDepartamento(e.target.value)} style={{...inp, cursor:"pointer"}}>
                         <option value="">Seleccioná tu departamento...</option>
-                        {["Compras","Recursos Humanos","Finanzas","Logística","Comercial","Mercadeo","Abastecimiento e Importaciones"].map(d=>(
+                        {["Abastecimiento y Planeación","Comercial","Compras","Finanzas","Logística","Mercadeo","Recursos Humanos","TI"].map(d=>(
                           <option key={d} value={d}>{d}</option>
                         ))}
                       </select>
@@ -805,7 +805,7 @@ export default function App() {
                     <div style={{display:"flex",alignItems:"flex-start",gap:10,margin:"14px 0",padding:"14px",background:"rgba(26,158,63,.06)",border:"1px solid rgba(26,158,63,.2)",borderRadius:10}}>
                       <input type="checkbox" id="terminos" checked={aceptoTerminos} onChange={e=>setAceptoTerminos(e.target.checked)} style={{marginTop:3,width:16,height:16,accentColor:G.green,cursor:"pointer",flexShrink:0}}/>
                       <label htmlFor="terminos" style={{fontSize:12,color:G.gray,lineHeight:1.6,cursor:"pointer"}}>
-                        Declaro que soy colaborador activo de MFA o El Colono. Acepto las <span style={{color:G.green,fontWeight:700}}>reglas y condiciones</span> de la Quiniela MFA Colaboradores.
+                        Declaro que soy colaborador activo de MFA. Acepto las <span style={{color:G.green,fontWeight:700}}>reglas y condiciones</span> de la Quiniela MFA Colaboradores.
                       </label>
                     </div>
                     <button type="submit" disabled={isLoading||!aceptoTerminos||cedulaStatus!=="ok"||!departamento} style={{...greenBtn,opacity:(isLoading||!aceptoTerminos||cedulaStatus!=="ok"||!departamento)?.5:1,marginTop:4}}>{isLoading?"Creando cuenta...":"Crear usuario"}</button>
@@ -1809,10 +1809,10 @@ function RulesView() {
       <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:900,color:G.green,textTransform:"uppercase",marginBottom:20}}>📋 Reglas de la Quiniela MFA Colaboradores</div>
 
       {seccion("Elegibilidad","🏢",[
-        ["La Quiniela MFA Colaboradores es una dinámica exclusiva para colaboradores activos de Mayoreo Ferretería y Acabados (MFA) y El Colono.",""],
+        ["La Quiniela MFA Colaboradores es una dinámica exclusiva para colaboradores activos de Mayoreo Ferretería y Acabados (MFA).",""],
         ["Solo pueden participar personas que sean colaboradores activos al momento del registro.",""],
         ["Se permite un único registro por colaborador y por correo electrónico.",""],
-        ["Al registrarse, el participante declara bajo su responsabilidad que es colaborador activo de MFA o El Colono.",""],
+        ["Al registrarse, el participante declara bajo su responsabilidad que es colaborador activo de MFA.",""],
       ])}
 
       {seccion("Predicciones","🎯",[
