@@ -409,9 +409,31 @@ export default function App() {
       // La API de gometa devuelve: { nombre, apellido1, apellido2 }
       // "nombre" en esa API es solo el nombre, no el nombre completo
       if (data && (data.nombre || data.apellido1)) {
-        setFirstName(data.nombre || "");
-        setLastName1(data.apellido1 || "");
-        setLastName2(data.apellido2 || "");
+        // Si apellido1 viene separado, úsalo directamente
+        if (data.apellido1) {
+          setFirstName(data.nombre || "");
+          setLastName1(data.apellido1 || "");
+          setLastName2(data.apellido2 || "");
+        } else {
+          // La API devuelve todo en "nombre": "LESLIE VILLEGAS VILLARREAL"
+          // Formato TSE: NOMBRE(S) APELLIDO1 APELLIDO2
+          const partes = (data.nombre || "").trim().split(/\s+/);
+          if (partes.length >= 3) {
+            // último = apellido2, penúltimo = apellido1, resto = nombre
+            const ap2 = partes.pop();
+            const ap1 = partes.pop();
+            setFirstName(partes.join(" "));
+            setLastName1(ap1);
+            setLastName2(ap2);
+          } else if (partes.length === 2) {
+            setFirstName(partes[0]);
+            setLastName1(partes[1]);
+            setLastName2("");
+          } else {
+            setFirstName(data.nombre || "");
+            setLastName1(""); setLastName2("");
+          }
+        }
         setCedulaStatus("ok");
       } else {
         throw new Error("Sin datos");
