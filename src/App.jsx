@@ -1599,6 +1599,177 @@ function PrediccionesAdmin({ matches, calcPoints }) {
   );
 }
 
+// ─── USER DETAIL ADMIN ────────────────────────────────────────────────────────
+function UserDetailAdmin({ selectedUser, matches, calcPoints, isUserAdmin, toggleAdmin, toggleBloqueo, SUPERUSER }) {
+  const [userPreds, setUserPreds] = React.useState({});
+  const [resultados, setResultados] = React.useState({});
+  const [loading, setLoading] = React.useState(true);
+  const [subTab, setSubTab] = React.useState("info"); // "info" | "predicciones" | "bonos"
+
+  React.useEffect(() => {
+    setLoading(true);
+    const load = async () => {
+      const { data: pr } = await supabase.from("predicciones").select("*").eq("user_email", selectedUser.email);
+      const { data: re } = await supabase.from("resultados").select("*");
+      if (pr) { const map = {}; pr.forEach(p => { map[p.match_id] = { home: p.home, away: p.away }; }); setUserPreds(map); }
+      if (re) { const map = {}; re.forEach(r => { map[r.match_id] = { home: r.home, away: r.away }; }); setResultados(map); }
+      setLoading(false);
+    };
+    load();
+  }, [selectedUser.email]);
+
+  const totalPts = matches.reduce((t, m) => {
+    const p = userPreds[m.id];
+    const r = resultados[m.id];
+    return t + (p && r ? calcPoints(p, r) : 0);
+  }, 0);
+
+  const playedMatches = matches.filter(m => resultados[m.id] !== undefined);
+
+  return (
+    <div style={{...card, padding:24, borderRadius:12}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:12}}>
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:"#fff"}}>{selectedUser.nombre} {selectedUser.primer_apellido} {selectedUser.segundo_apellido}</div>
+          <div style={{fontSize:13,color:G.muted}}>{selectedUser.email} · {selectedUser.departamento||"Sin departamento"}</div>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {selectedUser.email !== SUPERUSER && (
+            <>
+              <button onClick={()=>toggleAdmin(selectedUser.email)} style={{background:isUserAdmin(selectedUser.email)?"rgba(255,180,0,.1)":"rgba(26,158,63,.1)",border:`1px solid ${isUserAdmin(selectedUser.email)?"rgba(255,180,0,.4)":"rgba(26,158,63,.3)"}`,borderRadius:8,padding:"8px 14px",color:isUserAdmin(selectedUser.email)?"#ffb400":G.green,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                {isUserAdmin(selectedUser.email)?"⚙️ Quitar admin":"⚙️ Hacer admin"}
+              </button>
+              <button onClick={()=>toggleBloqueo(selectedUser)} style={{background:selectedUser.bloqueado?"rgba(26,158,63,.1)":"rgba(255,80,80,.1)",border:`1px solid ${selectedUser.bloqueado?"rgba(26,158,63,.3)":"rgba(255,80,80,.3)"}`,borderRadius:8,padding:"8px 14px",color:selectedUser.bloqueado?G.green:"#ff5050",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                {selectedUser.bloqueado?"✅ Desbloquear":"🚫 Bloquear"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        {[["info","👤 Info"],["predicciones","🎯 Predicciones"],["bonos","⭐ Bonificaciones"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setSubTab(v)} style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${subTab===v?G.green:G.border}`,background:subTab===v?G.green:"transparent",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:.5}}>{l}</button>
+        ))}
+        {/* Puntos totales */}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,background:"rgba(26,158,63,.1)",border:"1px solid rgba(26,158,63,.3)",borderRadius:8,padding:"7px 16px"}}>
+          <span style={{fontSize:12,color:G.muted}}>Total:</span>
+          <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,color:G.green}}>{totalPts} pts</span>
+        </div>
+      </div>
+
+      {loading ? <div style={{padding:"30px 0",textAlign:"center",color:G.muted}}>Cargando...</div> : (
+        <>
+          {/* INFO */}
+          {subTab === "info" && (
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}} className="admin-user-detail">
+              {[
+                ["Nombre completo",`${selectedUser.nombre||""} ${selectedUser.primer_apellido||""} ${selectedUser.segundo_apellido||""}`],
+                ["Correo", selectedUser.email],
+                ["Cédula", selectedUser.cedula||"—"],
+                ["Departamento", selectedUser.departamento||"—"],
+                ["Estado", selectedUser.bloqueado?"🚫 Bloqueado":"✅ Activo"],
+                ["Es admin", isUserAdmin(selectedUser.email)?"✅ Sí":"—"],
+                ["Registro", selectedUser.created_at?.slice(0,10)||"—"],
+                ["Bonos", selectedUser.bonos_completado?"✅ Completados":"⏳ Pendientes"],
+              ].map(([l,v])=>(
+                <div key={l} style={{background:G.card2,border:`1px solid ${G.border}`,borderRadius:8,padding:"10px 14px"}}>
+                  <div style={{fontSize:10,color:G.muted,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>{l}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:"#fff"}}>{v||"—"}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* PREDICCIONES */}
+          {subTab === "predicciones" && (
+            <div>
+              {playedMatches.length === 0 ? (
+                <div style={{textAlign:"center",padding:"30px 0",color:G.muted}}>Aún no hay partidos con resultado publicado.</div>
+              ) : (
+                <div style={{display:"grid",gap:8}}>
+                  {matches.map(m => {
+                    const p = userPreds[m.id];
+                    const r = resultados[m.id];
+                    const pts = p && r ? calcPoints(p, r) : null;
+                    const hasPred = p && p.home !== undefined && p.home !== "";
+                    return (
+                      <div key={m.id} style={{background:G.card2,border:`1px solid ${pts===5?"rgba(26,158,63,.4)":pts>0?"rgba(255,180,0,.3)":G.border}`,borderRadius:10,padding:"12px 16px",display:"grid",gridTemplateColumns:"auto 1fr auto auto",alignItems:"center",gap:12}}>
+                        {/* Fecha y grupo */}
+                        <div style={{fontSize:11,color:G.muted,textAlign:"center",minWidth:50}}>
+                          <div style={{fontWeight:700,color:G.gray}}>Gr.{m.group}</div>
+                          <div>{m.date}</div>
+                        </div>
+                        {/* Partido */}
+                        <div>
+                          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700}}>
+                            {m.homeTeam.flag} {m.home} vs {m.away} {m.awayTeam.flag}
+                          </div>
+                          <div style={{display:"flex",gap:12,marginTop:4,flexWrap:"wrap"}}>
+                            <span style={{fontSize:12,color:G.muted}}>
+                              Mi pred: <span style={{color:hasPred?"#fff":G.muted,fontWeight:700}}>{hasPred?`${p.home} - ${p.away}`:"—"}</span>
+                            </span>
+                            {r && (
+                              <span style={{fontSize:12,color:G.muted}}>
+                                Resultado: <span style={{color:G.green,fontWeight:700}}>{r.home} - {r.away}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Estado */}
+                        <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:100,border:"1px solid",whiteSpace:"nowrap",
+                          ...(m.status==="Abierto"?{borderColor:"rgba(26,158,63,.4)",background:"rgba(26,158,63,.1)",color:G.green}:
+                             m.status==="Cierra pronto"?{borderColor:"rgba(255,180,0,.4)",background:"rgba(255,180,0,.1)",color:"#ffb400"}:
+                             {borderColor:"rgba(255,80,80,.4)",background:"rgba(255,80,80,.1)",color:"#ff5050"})
+                        }}>{m.status}</span>
+                        {/* Puntos */}
+                        <div style={{textAlign:"center",minWidth:48}}>
+                          {pts !== null ? (
+                            <>
+                              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:900,color:pts===5?G.green:pts>0?"#ffb400":G.muted,lineHeight:1}}>{pts}</div>
+                              <div style={{fontSize:10,color:G.muted}}>pts</div>
+                            </>
+                          ) : (
+                            <span style={{fontSize:13,color:G.muted}}>—</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* BONIFICACIONES */}
+          {subTab === "bonos" && (
+            <div style={{display:"grid",gap:12}}>
+              {[
+                ["🏆 Campeón del torneo","20 pts",selectedUser.bono_campeon],
+                ["⚽ Goleador del torneo","10 pts",selectedUser.bono_goleador],
+                ["🌟 Mejor Jugador del torneo","10 pts",selectedUser.bono_mvp],
+              ].map(([label,pts,valor])=>(
+                <div key={label} style={{background:G.card2,border:`1px solid ${G.border}`,borderRadius:10,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{label}</div>
+                    <div style={{fontSize:11,color:G.muted,marginTop:2}}>{pts}</div>
+                  </div>
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:17,fontWeight:700,color:valor?G.green:G.muted}}>{valor||"Pendiente"}</div>
+                </div>
+              ))}
+              <div style={{background:"rgba(26,158,63,.06)",border:"1px solid rgba(26,158,63,.2)",borderRadius:8,padding:"10px 14px",fontSize:12,color:G.muted,textAlign:"center"}}>
+                {selectedUser.bonos_completado ? "✅ Bonificaciones completadas" : "⏳ El colaborador aún no ha completado sus bonificaciones"}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
 function AdminView({ matches, updateResult, publishResult, clearResult, adminResults, calcPoints }) {
   const [section, setSection] = React.useState("scores");
@@ -1743,41 +1914,15 @@ function AdminView({ matches, updateResult, publishResult, clearResult, adminRes
                 </div>
               </div>
               {selectedUser ? (
-                <div style={{...card,padding:24,borderRadius:12}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:12}}>
-                    <div>
-                      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:"#fff"}}>{selectedUser.nombre} {selectedUser.primer_apellido} {selectedUser.segundo_apellido}</div>
-                      <div style={{fontSize:13,color:G.muted}}>{selectedUser.email}</div>
-                    </div>
-                    <div style={{display:"flex",gap:8}}>
-                      {selectedUser.email !== SUPERUSER && (
-                        <>
-                          <button onClick={()=>toggleAdmin(selectedUser.email)} style={{background:isUserAdmin(selectedUser.email)?"rgba(255,180,0,.1)":"rgba(26,158,63,.1)",border:`1px solid ${isUserAdmin(selectedUser.email)?"rgba(255,180,0,.4)":"rgba(26,158,63,.3)"}`,borderRadius:8,padding:"8px 14px",color:isUserAdmin(selectedUser.email)?"#ffb400":G.green,cursor:"pointer",fontSize:12,fontWeight:700}}>
-                            {isUserAdmin(selectedUser.email)?"⚙️ Quitar admin":"⚙️ Hacer admin"}
-                          </button>
-                          <button onClick={()=>toggleBloqueo(selectedUser)} style={{background:selectedUser.bloqueado?"rgba(26,158,63,.1)":"rgba(255,80,80,.1)",border:`1px solid ${selectedUser.bloqueado?"rgba(26,158,63,.3)":"rgba(255,80,80,.3)"}`,borderRadius:8,padding:"8px 14px",color:selectedUser.bloqueado?G.green:"#ff5050",cursor:"pointer",fontSize:12,fontWeight:700}}>
-                            {selectedUser.bloqueado?"✅ Desbloquear":"🚫 Bloquear"}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}} className="admin-user-detail">
-                    {[
-                      ["Nombre",`${selectedUser.nombre||""} ${selectedUser.primer_apellido||""} ${selectedUser.segundo_apellido||""}`],
-                      ["Correo",selectedUser.email],
-                      ["Estado",selectedUser.bloqueado?"🚫 Bloqueado":"✅ Activo"],
-                      ["Es admin",isUserAdmin(selectedUser.email)?"✅ Sí":"—"],
-                      ["Registro",selectedUser.created_at?.slice(0,10)||"—"],
-                      ["Bonos",selectedUser.bonos_completado?"✅ Completados":"⏳ Pendientes"],
-                    ].map(([l,v])=>(
-                      <div key={l} style={{background:G.card2,border:`1px solid ${G.border}`,borderRadius:8,padding:"10px 14px"}}>
-                        <div style={{fontSize:10,color:G.muted,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>{l}</div>
-                        <div style={{fontSize:13,fontWeight:600,color:"#fff"}}>{v||"—"}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <UserDetailAdmin
+                  selectedUser={selectedUser}
+                  matches={matches}
+                  calcPoints={calcPoints}
+                  isUserAdmin={isUserAdmin}
+                  toggleAdmin={toggleAdmin}
+                  toggleBloqueo={toggleBloqueo}
+                  SUPERUSER={SUPERUSER}
+                />
               ) : (
                 <div style={{...card,padding:40,textAlign:"center",borderRadius:12,color:G.muted}}>Selecciona un colaborador para ver sus detalles.</div>
               )}
