@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import { Save, LogOut } from "lucide-react";
@@ -303,6 +303,67 @@ function BonificacionesDisplay({ email }) {
   );
 }
 
+// ─── COUNTDOWN ────────────────────────────────────────────────────────────────
+function Countdown({ matches }) {
+  const [now, setNow] = React.useState(new Date());
+  React.useEffect(() => {
+    const i = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  const next = React.useMemo(() => {
+    return matches
+      .filter(m => m.status !== "Cerrado")
+      .sort((a, b) => {
+        const toMs = m => {
+          const months = { "JUN": 5 };
+          const [day, monthStr] = m.date.split(" ");
+          const [hourStr, minuteStr] = m.time.replace(" PM","").replace(" AM","").split(":");
+          let hour = parseInt(hourStr);
+          const isPM = m.time.includes("PM");
+          if (isPM && hour !== 12) hour += 12;
+          if (!isPM && hour === 12) hour = 0;
+          return new Date(Date.UTC(2026, months[monthStr], parseInt(day), hour + 6, parseInt(minuteStr))).getTime();
+        };
+        return toMs(a) - toMs(b);
+      })[0];
+  }, [matches]);
+
+  if (!next) return null;
+
+  const months = { "JUN": 5 };
+  const [day, monthStr] = next.date.split(" ");
+  const [hourStr, minuteStr] = next.time.replace(" PM","").replace(" AM","").split(":");
+  let hour = parseInt(hourStr);
+  const isPM = next.time.includes("PM");
+  if (isPM && hour !== 12) hour += 12;
+  if (!isPM && hour === 12) hour = 0;
+  const matchMs = new Date(Date.UTC(2026, months[monthStr], parseInt(day), hour + 6, parseInt(minuteStr))).getTime();
+  const diffMs = matchMs - now.getTime();
+  if (diffMs <= 0) return null;
+
+  const h = Math.floor(diffMs / 3600000);
+  const m = Math.floor((diffMs % 3600000) / 60000);
+  const s = Math.floor((diffMs % 60000) / 1000);
+  const isUrgent = diffMs < 3600000;
+  const pad = n => String(n).padStart(2, "0");
+
+  return (
+    <div style={{background:isUrgent?"rgba(255,80,80,.08)":"rgba(26,158,63,.06)",border:`1px solid ${isUrgent?"rgba(255,80,80,.3)":"rgba(26,158,63,.2)"}`,borderRadius:12,padding:"12px 18px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:18}}>⏱</span>
+        <div>
+          <div style={{fontSize:11,color:G.muted,textTransform:"uppercase",letterSpacing:1}}>Próximo partido</div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700,color:"#fff"}}>{next.homeTeam?.flag} {next.home} vs {next.away} {next.awayTeam?.flag} · {next.date} {next.time}</div>
+        </div>
+      </div>
+      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:isUrgent?"#ff5050":G.green,letterSpacing:2}}>
+        {h > 0 && `${h}h `}{pad(m)}m {pad(s)}s
+      </div>
+    </div>
+  );
+}
+
 // ─── COMPONENT PRINCIPAL ──────────────────────────────────────────────────────
 export default function App() {
   const [authMode, setAuthMode] = useState("login");
@@ -334,19 +395,29 @@ export default function App() {
   const [matchFilter, setMatchFilter] = useState("all");
   const [adminResults, setAdminResults] = useState({});
   const [liveStandings, setLiveStandings] = useState([]);
+  const [ticker, setTicker] = useState(0);
 
-  // Cargar resultados al montar
+  // Ticker cada 30 segundos — recarga resultados y sincroniza estado
   useEffect(() => {
-    supabase.from("resultados").select("*").then(({ data }) => {
+    const loadResults = async () => {
+      const { data } = await supabase.from("resultados").select("*");
       if (data) {
         const map = {};
-        data.forEach(r => { map[r.match_id] = { home: r.home, away: r.away, locked: r.locked }; });
+        data.forEach(r => { map[r.match_id] = { home: r.home, away: r.away, locked: r.locked, published: r.published }; });
         setAdminResults(map);
       }
-    });
+    };
+    loadResults();
+    const interval = setInterval(() => {
+      loadResults();
+      setTicker(t => t + 1);
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const getMatchStatus = (date, time) => {
+  const getMatchStatus = useCallback((date, time, matchId) => {
+    // Si está manualmente cerrado/locked en DB, siempre Cerrado
+    if (adminResults[matchId]?.locked) return "Cerrado";
     const months = { "JUN": 5 };
     const [day, monthStr] = date.split(" ");
     const [hourStr, minuteStr] = time.replace(" PM","").replace(" AM","").split(":");
@@ -361,14 +432,14 @@ export default function App() {
     if (diffMs <= 0) return "Cerrado";
     if (diffHours <= 2) return "Cierra pronto";
     return "Abierto";
-  };
+  }, [adminResults, ticker]);
 
-  const matches = matchList.map((m) => ({
+  const matches = useMemo(() => matchList.map((m) => ({
     ...m, homeTeam:teams[m.home], awayTeam:teams[m.away],
-    status: getMatchStatus(m.date, m.time),
-    result: adminResults[m.id] && adminResults[m.id].home !== "" && adminResults[m.id].away !== ""
+    status: getMatchStatus(m.date, m.time, m.id),
+    result: adminResults[m.id]?.published && adminResults[m.id]?.home !== null && adminResults[m.id]?.home !== ""
       ? { home:Number(adminResults[m.id].home), away:Number(adminResults[m.id].away) } : null,
-  }));
+  })), [adminResults, ticker, getMatchStatus]);
 
   // Standings en landing (sin sesión)
   useEffect(() => {
@@ -546,14 +617,14 @@ export default function App() {
   const updatePrediction = async (matchId, team, value) => {
     const match = matchList.find(m => m.id === matchId);
     if (!match) return;
-    const status = getMatchStatus(match.date, match.time);
+    const status = getMatchStatus(match.date, match.time, matchId);
     if (status === "Cerrado") return;
     const v = value.replace(/[^0-9]/g,"").slice(0,2);
     const updated = { ...predictions, [matchId]: { ...(predictions[matchId]||{}), [team]: v } };
     setPredictions(updated);
     const pred = updated[matchId];
     if (pred.home !== undefined && pred.home !== "" && pred.away !== undefined && pred.away !== "") {
-      const statusNow = getMatchStatus(match.date, match.time);
+      const statusNow = getMatchStatus(match.date, match.time, matchId);
       if (statusNow === "Cerrado") { setPredictionStatus("closed"); setTimeout(()=>setPredictionStatus(""),3000); return; }
       await supabase.from("predicciones").upsert({ user_email:user.email, match_id:matchId, home:pred.home, away:pred.away, updated_at:new Date().toISOString() }, { onConflict:"user_email,match_id" });
       setPredictionStatus("saved"); setTimeout(()=>setPredictionStatus(""),2000);
@@ -584,11 +655,22 @@ export default function App() {
     if (!isAdmin(user)) return;
     const r = adminResults[matchId];
     if (!r || r.home === "" || r.away === "" || r.home === undefined || r.away === undefined) return;
-    const match = matchList.find(m => m.id === matchId);
-    if (match && getMatchStatus(match.date, match.time) !== "Cerrado") { alert("⚠️ No se puede publicar el resultado antes del cierre del partido."); return; }
-    await supabase.from("resultados").upsert({ match_id:matchId, home:Number(r.home), away:Number(r.away), locked:true, updated_at:new Date().toISOString() }, { onConflict:"match_id" });
-    setAdminResults(c=>({...c,[matchId]:{...c[matchId],locked:true}}));
+    await supabase.from("resultados").upsert({ match_id:matchId, home:Number(r.home), away:Number(r.away), locked:true, published:true, updated_at:new Date().toISOString() }, { onConflict:"match_id" });
+    setAdminResults(c=>({...c,[matchId]:{...c[matchId],locked:true,published:true}}));
   };
+  const lockMatch = async (matchId) => {
+    const existing = adminResults[matchId];
+    if (existing?.locked) {
+      // Desbloquear
+      await supabase.from("resultados").update({ locked: false }).eq("match_id", matchId);
+      setAdminResults(c=>({...c,[matchId]:{...c[matchId],locked:false}}));
+    } else {
+      // Bloquear sin resultado (solo cierra predicciones)
+      await supabase.from("resultados").upsert({ match_id:matchId, home: existing?.home ?? null, away: existing?.away ?? null, locked:true, updated_at:new Date().toISOString() }, { onConflict:"match_id" });
+      setAdminResults(c=>({...c,[matchId]:{...(c[matchId]||{}),locked:true}}));
+    }
+  };
+
   const clearResult = async (matchId) => {
     await supabase.from("resultados").delete().eq("match_id", matchId);
     setAdminResults(c=>{const u={...c};delete u[matchId];return u;});
@@ -684,6 +766,7 @@ export default function App() {
                   <div style={{fontSize:12,color:G.muted}}>Exclusiva para colaboradores de Mayoreo Ferretería y Acabados.</div>
                 </div>
               </div>
+              <Countdown matches={matches}/>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}} className="landing-info-grid">
                 {/* Top 10 */}
                 <div style={{...card,padding:16}}>
@@ -704,14 +787,24 @@ export default function App() {
                 {/* Próximos partidos */}
                 <div style={{...card,padding:16}}>
                   <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,color:G.gray,marginBottom:12}}>📅 Próximos partidos</div>
-                  {matches.slice(0,4).map(m=>(
-                    <div key={m.id} style={{display:"grid",gridTemplateColumns:"1fr auto 1fr auto",gap:8,alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${G.border}`}}>
-                      <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.homeTeam.flag} {m.home}</span>
-                      <span style={{fontSize:10,fontWeight:700,color:G.green,background:"rgba(26,158,63,.15)",padding:"2px 5px",borderRadius:4}}>VS</span>
-                      <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.away} {m.awayTeam.flag}</span>
-                      <div style={{textAlign:"right",fontSize:9,color:G.muted,lineHeight:1.4}}>{m.date}<br/>{m.time}</div>
-                    </div>
-                  ))}
+                  {(() => {
+                    const now = new Date();
+                    const todayStr = `${now.getUTCDate()} JUN`;
+                    const tomorrowStr = `${now.getUTCDate()+1} JUN`;
+                    const upcoming = matches
+                      .filter(m => m.status !== "Cerrado")
+                      .filter(m => m.date === todayStr || m.date === tomorrowStr)
+                      .slice(0, 8);
+                    const show = upcoming.length > 0 ? upcoming : matches.filter(m => m.status !== "Cerrado").slice(0, 4);
+                    return show.map(m=>(
+                      <div key={m.id} style={{display:"grid",gridTemplateColumns:"1fr auto 1fr auto",gap:8,alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${G.border}`}}>
+                        <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.homeTeam.flag} {m.home}</span>
+                        <span style={{fontSize:10,fontWeight:700,color:G.green,background:"rgba(26,158,63,.15)",padding:"2px 5px",borderRadius:4}}>VS</span>
+                        <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.away} {m.awayTeam.flag}</span>
+                        <div style={{textAlign:"right",fontSize:9,color:G.muted,lineHeight:1.4}}>{m.date}<br/>{m.time}</div>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
             </motion.div>
@@ -865,6 +958,7 @@ export default function App() {
           </div>
         </div>
 
+        <Countdown matches={matches}/>
         <BannerDisplay slot={4}/>
 
         <div style={{display:"flex",gap:6,marginBottom:24,flexWrap:"wrap"}} className="tabs-row">
@@ -939,7 +1033,7 @@ export default function App() {
           {view==="standings"&&<StandingsView matches={matches} predictions={predictions} calcPoints={calcPoints} user={user}/>}
           {view==="profile"&&<ProfileView user={user} setUser={setUser} predictions={predictions} matches={matches} calcPoints={calcPoints}/>}
           {view==="chat"&&<ChatView user={user}/>}
-          {view==="admin"&&<AdminView matches={matches} updateResult={updateResult} publishResult={publishResult} clearResult={clearResult} adminResults={adminResults} calcPoints={calcPoints}/>}
+          {view==="admin"&&<AdminView matches={matches} updateResult={updateResult} publishResult={publishResult} clearResult={clearResult} lockMatch={lockMatch} adminResults={adminResults} calcPoints={calcPoints}/>}
           {view==="rules"&&<RulesView/>}
         </div>
       </div>
@@ -1771,7 +1865,7 @@ function UserDetailAdmin({ selectedUser, matches, calcPoints, isUserAdmin, toggl
 }
 
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
-function AdminView({ matches, updateResult, publishResult, clearResult, adminResults, calcPoints }) {
+function AdminView({ matches, updateResult, publishResult, clearResult, lockMatch, adminResults, calcPoints }) {
   const [section, setSection] = React.useState("scores");
   const [dbUsers, setDbUsers] = React.useState([]);
   const [loadingUsers, setLoadingUsers] = React.useState(false);
@@ -1850,29 +1944,40 @@ function AdminView({ matches, updateResult, publishResult, clearResult, adminRes
             <div style={{fontSize:13,color:G.muted,marginTop:4}}>Al publicar un marcador se actualizan los puntos automáticamente.</div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}} className="admin-scores-grid">
-            {matches.map(m=>(
-              <div key={m.id} style={{...card,padding:14,borderRadius:12}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                  <span style={{fontSize:11,color:G.muted}}>Grupo {m.group} · {m.date}</span>
-                  <span style={{fontSize:11,color:m.result?G.green:"#ffb400"}}>{m.result?"✅ Publicado":"⏳ Pendiente"}</span>
+            {matches.map(m=>{
+              const isLocked = adminResults[m.id]?.locked;
+              const hasResult = m.result !== null;
+              return (
+              <div key={m.id} style={{...card,padding:14,borderRadius:12,border:`1px solid ${isLocked&&!hasResult?"rgba(255,180,0,.3)":hasResult?"rgba(26,158,63,.3)":G.border}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <span style={{fontSize:11,color:G.muted}}>Grupo {m.group} · {m.date} · {m.time}</span>
+                  <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:100,border:"1px solid",
+                    ...(hasResult?{borderColor:"rgba(26,158,63,.4)",background:"rgba(26,158,63,.1)",color:G.green}:
+                       isLocked?{borderColor:"rgba(255,180,0,.4)",background:"rgba(255,180,0,.1)",color:"#ffb400"}:
+                       {borderColor:"rgba(255,80,80,.4)",background:"rgba(255,80,80,.1)",color:"#ff5050"})
+                  }}>{hasResult?"✅ Publicado":isLocked?"🔒 Cerrado":"⏳ Pendiente"}</span>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 52px auto 52px 1fr",alignItems:"center",gap:6,marginBottom:12}}>
                   <div style={{textAlign:"right",fontSize:18}}>{m.homeTeam.flag}</div>
-                  <input disabled={m.result?.locked} value={adminResults[m.id]?.home?.toString()||""} onChange={e=>updateResult(m.id,"home",e.target.value)} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:20,fontWeight:900,padding:"7px 4px"}} placeholder="0"/>
+                  <input disabled={isLocked} value={adminResults[m.id]?.home?.toString()||""} onChange={e=>updateResult(m.id,"home",e.target.value)} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:20,fontWeight:900,padding:"7px 4px",opacity:isLocked?.5:1}} placeholder="0"/>
                   <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:13,color:G.green,fontWeight:700}}>VS</span>
-                  <input disabled={m.result?.locked} value={adminResults[m.id]?.away?.toString()||""} onChange={e=>updateResult(m.id,"away",e.target.value)} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:20,fontWeight:900,padding:"7px 4px"}} placeholder="0"/>
+                  <input disabled={isLocked} value={adminResults[m.id]?.away?.toString()||""} onChange={e=>updateResult(m.id,"away",e.target.value)} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:20,fontWeight:900,padding:"7px 4px",opacity:isLocked?.5:1}} placeholder="0"/>
                   <div style={{fontSize:18}}>{m.awayTeam.flag}</div>
                 </div>
-                {m.result?.locked?(
-                  <div style={{textAlign:"center",padding:"8px",background:"rgba(26,158,63,.08)",border:"1px solid rgba(26,158,63,.2)",borderRadius:8,fontSize:12,color:G.green}}>🔒 Resultado bloqueado</div>
-                ):(
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                    <button onClick={()=>clearResult(m.id)} style={{background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.3)",borderRadius:8,padding:"8px",fontSize:12,fontWeight:700,color:"#ff5050",cursor:"pointer"}}>Limpiar</button>
-                    <button onClick={()=>publishResult(m.id)} style={{background:"rgba(26,158,63,.1)",border:"1px solid rgba(26,158,63,.3)",borderRadius:8,padding:"8px",fontSize:12,fontWeight:700,color:G.green,cursor:"pointer"}}>Publicar</button>
+                {hasResult ? (
+                  <div style={{textAlign:"center",padding:"8px",background:"rgba(26,158,63,.08)",border:"1px solid rgba(26,158,63,.2)",borderRadius:8,fontSize:12,color:G.green}}>🔒 Resultado publicado y bloqueado</div>
+                ) : (
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                    <button onClick={()=>clearResult(m.id)} disabled={isLocked&&!adminResults[m.id]?.home} style={{background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.3)",borderRadius:8,padding:"8px",fontSize:11,fontWeight:700,color:"#ff5050",cursor:"pointer",opacity:isLocked&&!adminResults[m.id]?.home?.5:1}}>🗑️ Limpiar</button>
+                    <button onClick={()=>lockMatch(m.id)} style={{background:isLocked?"rgba(255,180,0,.15)":"rgba(255,180,0,.08)",border:`1px solid ${isLocked?"rgba(255,180,0,.5)":"rgba(255,180,0,.3)"}`,borderRadius:8,padding:"8px",fontSize:11,fontWeight:700,color:"#ffb400",cursor:"pointer"}}>
+                      {isLocked?"🔓 Abrir":"🔒 Cerrar"}
+                    </button>
+                    <button onClick={()=>publishResult(m.id)} disabled={isLocked&&(!adminResults[m.id]?.home&&adminResults[m.id]?.home!==0)} style={{background:"rgba(26,158,63,.1)",border:"1px solid rgba(26,158,63,.3)",borderRadius:8,padding:"8px",fontSize:11,fontWeight:700,color:G.green,cursor:"pointer"}}>✅ Publicar</button>
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : (
