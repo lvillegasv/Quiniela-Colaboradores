@@ -541,8 +541,12 @@ export default function App() {
         try { await supabase.from("access_log").insert({ email: u.email, evento: "login_bloqueado", timestamp: new Date().toISOString() }); } catch(_){}
         setError("Tu cuenta ha sido suspendida. Contacta a MFA para más información."); setIsLoading(false); return;
       }
-      const ipResp = await fetch("https://api.ipify.org?format=json").catch(()=>({json:()=>({ip:"desconocida"})}));
-      const { ip } = await ipResp.json().catch(()=>({ip:"desconocida"}));
+      let ip = "desconocida";
+      try {
+        const ipResp = await fetch("https://api.ipify.org?format=json");
+        const ipData = await ipResp.json();
+        ip = ipData.ip || "desconocida";
+      } catch(_) {}
       try { await supabase.from("access_log").insert({ email: u.email, evento: "login_exitoso", ip, user_agent: navigator.userAgent, timestamp: new Date().toISOString() }); } catch(_){}
       setUser({ email:u.email, firstName:u.nombre, lastName1:u.primer_apellido, lastName2:u.segundo_apellido, esAdmin:u.es_admin||false });
     } catch(err) { setError(err.message||"Error al iniciar sesión."); }
@@ -571,8 +575,12 @@ export default function App() {
         departamento,
       });
       if (ie) throw new Error(ie.message);
-      const ipR = await fetch("https://api.ipify.org?format=json").catch(()=>({json:()=>({ip:"desconocida"})}));
-      const { ip: ipReg } = await ipR.json().catch(()=>({ip:"desconocida"}));
+      let ipReg = "desconocida";
+      try {
+        const ipR = await fetch("https://api.ipify.org?format=json");
+        const ipRData = await ipR.json();
+        ipReg = ipRData.ip || "desconocida";
+      } catch(_) {}
       try { await supabase.from("access_log").insert({ email: email.trim().toLowerCase(), evento: "registro", ip: ipReg, user_agent: navigator.userAgent, timestamp: new Date().toISOString() }); } catch(_){}
       setUser({ email:email.trim().toLowerCase(), firstName:firstName.trim(), lastName1:lastName1.trim(), lastName2:lastName2.trim(), esAdmin:false });
     } catch(err) { setError(err.message||"Error al crear el usuario."); }
