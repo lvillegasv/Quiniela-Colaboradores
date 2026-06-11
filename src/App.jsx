@@ -447,7 +447,7 @@ export default function App() {
     const load = async () => {
       const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado");
       const { data: preds } = await supabase.from("predicciones").select("*");
-      const { data: resultados } = await supabase.from("resultados").select("*");
+      const { data: resultados } = await supabase.from("resultados").select("*").eq("published", true);
       if (!usuarios || !preds) return;
       const resMap = {};
       (resultados||[]).forEach(r => { resMap[r.match_id] = { home:r.home, away:r.away }; });
@@ -1169,8 +1169,7 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
     const load = async () => {
       const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bono_campeon, bono_goleador, bono_mvp, bonos_completado, bloqueado");
       const { data: preds } = await supabase.from("predicciones").select("*");
-      const { data: resultados } = await supabase.from("resultados").select("*");
-      if (!usuarios || !preds) { setLoading(false); return; }
+      const { data: resultados } = await supabase.from("resultados").select("*").eq("published", true);
       const resMap = {};
       (resultados||[]).forEach(r => { resMap[r.match_id] = { home:r.home, away:r.away }; });
       const data = usuarios.filter(u => !u.bloqueado).map(u => {
@@ -1537,7 +1536,7 @@ function PrediccionesAdmin({ matches, calcPoints }) {
     const load = async () => {
       const { data: us } = await supabase.from("usuarios").select("email, nombre, primer_apellido, segundo_apellido, departamento, bono_campeon, bono_goleador, bono_mvp, bonos_completado, bloqueado").order("nombre");
       const { data: pr } = await supabase.from("predicciones").select("*");
-      const { data: re } = await supabase.from("resultados").select("*");
+      const { data: re } = await supabase.from("resultados").select("*").eq("published", true);
       if (us) setUsuarios(us.filter(u => !u.bloqueado));
       if (pr) {
         const map = {};
