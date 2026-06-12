@@ -366,6 +366,8 @@ function Countdown({ matches }) {
 
 // ─── COMPONENT PRINCIPAL ──────────────────────────────────────────────────────
 export default function App() {
+  const [unreadTickets, setUnreadTickets] = useState(0);
+  const [showSoporte, setShowSoporte] = useState(false);
   const [authMode, setAuthMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -933,14 +935,9 @@ export default function App() {
     );
   }
 
-  // ─── PANTALLA PRINCIPAL (SESIÓN ACTIVA) ──────────────────────────────────────
-  const isAdminUser = isAdmin(user);
-  const [unreadTickets, setUnreadTickets] = React.useState(0);
-  const [showSoporte, setShowSoporte] = React.useState(false);
-
-  // Cargar tickets sin leer para badge del admin
-  React.useEffect(() => {
-    if (!isAdminUser) return;
+  // Badge tickets sin leer para admin
+  useEffect(() => {
+    if (!user || !isAdmin(user)) return;
     const load = async () => {
       const { count } = await supabase.from("soporte").select("*", { count:"exact", head:true }).eq("leido_admin", false).eq("from_user", true);
       setUnreadTickets(count || 0);
@@ -948,7 +945,10 @@ export default function App() {
     load();
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
-  }, [isAdminUser]);
+  }, [user]);
+
+  // ─── PANTALLA PRINCIPAL (SESIÓN ACTIVA) ──────────────────────────────────────
+  const isAdminUser = isAdmin(user);
 
   const tabs = [
     ["predictions","🎯","Mis predicciones"],
