@@ -935,13 +935,28 @@ export default function App() {
 
   // ─── PANTALLA PRINCIPAL (SESIÓN ACTIVA) ──────────────────────────────────────
   const isAdminUser = isAdmin(user);
+  const [unreadTickets, setUnreadTickets] = React.useState(0);
+  const [showSoporte, setShowSoporte] = React.useState(false);
+
+  // Cargar tickets sin leer para badge del admin
+  React.useEffect(() => {
+    if (!isAdminUser) return;
+    const load = async () => {
+      const { count } = await supabase.from("soporte").select("*", { count:"exact", head:true }).eq("leido_admin", false).eq("from_user", true);
+      setUnreadTickets(count || 0);
+    };
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
+  }, [isAdminUser]);
+
   const tabs = [
     ["predictions","🎯","Mis predicciones"],
     ["results","📊","Mis resultados"],
     ["standings","🏅","Posiciones"],
     ["profile","👤","Mi perfil"],
     ["chat","💬","Chat"],
-    ...(isAdminUser ? [["admin","⚙️","Admin"]] : []),
+    ...(isAdminUser ? [["admin","⚙️", unreadTickets > 0 ? `Admin (${unreadTickets})` : "Admin"]] : []),
     ["rules","📋","Reglas"],
   ];
 
@@ -1056,7 +1071,236 @@ export default function App() {
           {view==="admin"&&<AdminView matches={matches} updateResult={updateResult} publishResult={publishResult} clearResult={clearResult} lockMatch={lockMatch} adminResults={adminResults} calcPoints={calcPoints}/>}
           {view==="rules"&&<RulesView/>}
         </div>
+
+        {/* Botón flotante de soporte */}
+        {!isAdminUser && (
+          <button
+            onClick={()=>setShowSoporte(true)}
+            style={{position:"fixed",bottom:24,right:24,width:56,height:56,borderRadius:"50%",background:G.green,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,boxShadow:"0 4px 20px rgba(26,158,63,.5)",zIndex:900}}
+          >
+            🎫
+          </button>
+        )}
+
+        {/* Modal soporte colaborador */}
+        {showSoporte && !isAdminUser && (
+          <SoporteFloat user={user} onClose={()=>setShowSoporte(false)}/>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ─── SOPORTE FLOAT (colaborador) ─────────────────────────────────────────────
+function SoporteFloat({ user, onClose }) {
+  const [mensajes, setMensajes] = React.useState([]);
+  const [texto, setTexto] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const bottomRef = React.useRef(null);
+  const userName = [user.firstName, user.lastName1].filter(Boolean).join(" ") || "Colaborador";
+
+  const load = React.useCallback(async () => {
+    const { data } = await supabase.from("soporte").select("*")
+      .eq("user_email", user.email).order("created_at", { ascending: true });
+    if (data) setMensajes(data);
+    // Marcar como leídos los mensajes del admin
+    await supabase.from("soporte").update({ leido_user: true })
+      .eq("user_email", user.email).eq("from_user", false);
+  }, [user.email]);
+
+  React.useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i); }, [load]);
+  React.useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [mensajes]);
+
+  const send = async () => {
+    const t = texto.trim(); if (!t) return;
+    setSending(true);
+    await supabase.from("soporte").insert({ user_email: user.email, user_name: userName, mensaje: t, from_user: true });
+    setTexto(""); await load(); setSending(false);
+  };
+
+  const formatTime = (ts) => {
+    const d = new Date(ts);
+    const cr = new Date(d.getTime() - 6*60*60*1000);
+    const pad = n => String(n).padStart(2,"0");
+    return `${pad(cr.getUTCDate())}/${pad(cr.getUTCMonth()+1)} ${pad(cr.getUTCHours())}:${pad(cr.getUTCMinutes())}`;
+  };
+
+  const unreadAdmin = mensajes.filter(m => !m.from_user && !m.leido_user).length;
+
+  return (
+    <div style={{position:"fixed",bottom:90,right:24,width:340,maxHeight:"70vh",background:G.card,border:`1px solid ${G.border}`,borderRadius:20,display:"flex",flexDirection:"column",zIndex:1000,boxShadow:"0 8px 40px rgba(0,0,0,.6)"}}>
+      {/* Header */}
+      <div style={{padding:"14px 18px",borderBottom:`1px solid ${G.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",borderRadius:"20px 20px 0 0"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>🎫</span>
+          <div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,color:G.green}}>Soporte MFA</div>
+            <div style={{fontSize:11,color:G.muted}}>El admin te responderá pronto</div>
+          </div>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:"none",color:G.muted,fontSize:20,cursor:"pointer",lineHeight:1}}>×</button>
+      </div>
+
+      {/* Mensajes */}
+      <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:10,minHeight:0}}>
+        {mensajes.length === 0 && (
+          <div style={{textAlign:"center",color:G.muted,fontSize:13,padding:"20px 0"}}>
+            <div style={{fontSize:32,marginBottom:8}}>👋</div>
+            ¿Tenés alguna pregunta o problema?<br/>Escribinos y te respondemos.
+          </div>
+        )}
+        {mensajes.map(m => {
+          const isMe = m.from_user;
+          return (
+            <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start"}}>
+              <div style={{fontSize:10,color:G.muted,marginBottom:3}}>{isMe?"Tú":"Admin MFA"} · {formatTime(m.created_at)}</div>
+              <div style={{maxWidth:"85%",padding:"9px 13px",borderRadius:isMe?"14px 4px 14px 14px":"4px 14px 14px 14px",background:isMe?G.green:G.card2,border:`1px solid ${isMe?"transparent":G.border}`,fontSize:13,color:"#fff",lineHeight:1.5,wordBreak:"break-word"}}>
+                {m.mensaje}
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Input */}
+      <div style={{padding:"10px 12px",borderTop:`1px solid ${G.border}`,display:"flex",gap:8,borderRadius:"0 0 20px 20px"}}>
+        <input
+          value={texto} onChange={e=>setTexto(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
+          placeholder="Escribí tu mensaje..."
+          style={{...inp,flex:1,padding:"9px 12px",fontSize:13}}
+        />
+        <button onClick={send} disabled={sending||!texto.trim()} style={{background:G.green,border:"none",borderRadius:10,padding:"9px 14px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",opacity:sending||!texto.trim()?.5:1}}>➤</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── SOPORTE ADMIN ────────────────────────────────────────────────────────────
+function SoporteAdmin() {
+  const [tickets, setTickets] = React.useState([]);
+  const [selected, setSelected] = React.useState(null);
+  const [mensajes, setMensajes] = React.useState([]);
+  const [respuesta, setRespuesta] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const bottomRef = React.useRef(null);
+
+  const loadTickets = React.useCallback(async () => {
+    const { data } = await supabase.from("soporte").select("user_email, user_name, mensaje, created_at, leido_admin, from_user")
+      .order("created_at", { ascending: false });
+    if (!data) return;
+    // Agrupar por user_email — un ticket por usuario
+    const map = {};
+    data.forEach(m => {
+      if (!map[m.user_email]) {
+        map[m.user_email] = { email: m.user_email, name: m.user_name, lastMsg: m.mensaje, lastTime: m.created_at, unread: 0 };
+      }
+      if (m.from_user && !m.leido_admin) map[m.user_email].unread++;
+    });
+    setTickets(Object.values(map).sort((a,b) => new Date(b.lastTime) - new Date(a.lastTime)));
+  }, []);
+
+  React.useEffect(() => { loadTickets(); const i = setInterval(loadTickets, 8000); return () => clearInterval(i); }, [loadTickets]);
+
+  const selectTicket = async (ticket) => {
+    setSelected(ticket);
+    const { data } = await supabase.from("soporte").select("*").eq("user_email", ticket.email).order("created_at", { ascending: true });
+    if (data) setMensajes(data);
+    // Marcar como leídos
+    await supabase.from("soporte").update({ leido_admin: true }).eq("user_email", ticket.email).eq("from_user", true);
+    setTickets(t => t.map(tk => tk.email === ticket.email ? {...tk, unread: 0} : tk));
+  };
+
+  React.useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [mensajes]);
+
+  const sendReply = async () => {
+    if (!respuesta.trim() || !selected) return;
+    setSending(true);
+    await supabase.from("soporte").insert({ user_email: selected.email, user_name: "Admin MFA", mensaje: respuesta.trim(), from_user: false, leido_user: false });
+    setRespuesta("");
+    const { data } = await supabase.from("soporte").select("*").eq("user_email", selected.email).order("created_at", { ascending: true });
+    if (data) setMensajes(data);
+    setSending(false);
+  };
+
+  const formatTime = (ts) => {
+    const d = new Date(ts);
+    const cr = new Date(d.getTime() - 6*60*60*1000);
+    const pad = n => String(n).padStart(2,"0");
+    return `${pad(cr.getUTCDate())}/${pad(cr.getUTCMonth()+1)} ${pad(cr.getUTCHours())}:${pad(cr.getUTCMinutes())}`;
+  };
+
+  const filtered = tickets.filter(t =>
+    (t.name||"").toLowerCase().includes(search.toLowerCase()) ||
+    (t.email||"").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:16,height:"65vh"}} className="admin-users-grid">
+      {/* Lista tickets */}
+      <div style={{...card,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{padding:"12px 14px",borderBottom:`1px solid ${G.border}`}}>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,color:G.green,marginBottom:8}}>🎫 TICKETS ({tickets.length})</div>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." style={{...inp,padding:"7px 10px",fontSize:12}}/>
+        </div>
+        <div style={{flex:1,overflowY:"auto"}}>
+          {filtered.length === 0 && <div style={{padding:20,textAlign:"center",fontSize:13,color:G.muted}}>Sin tickets.</div>}
+          {filtered.map(t => (
+            <div key={t.email} onClick={()=>selectTicket(t)} style={{padding:"12px 14px",cursor:"pointer",borderBottom:`1px solid ${G.border}`,background:selected?.email===t.email?"rgba(26,158,63,.08)":"transparent",display:"flex",gap:10,alignItems:"flex-start"}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:t.unread>0?G.green:G.card2,border:`1px solid ${t.unread>0?G.green:G.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:t.unread>0?"#fff":G.gray,flexShrink:0}}>
+                {t.unread > 0 ? t.unread : (t.name||"?")[0].toUpperCase()}
+              </div>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{fontSize:13,fontWeight:t.unread>0?700:600,color:t.unread>0?"#fff":G.gray,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name||t.email}</div>
+                <div style={{fontSize:11,color:G.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{t.lastMsg}</div>
+                <div style={{fontSize:10,color:G.muted,marginTop:2}}>{formatTime(t.lastTime)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Conversación */}
+      {selected ? (
+        <div style={{...card,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:`1px solid ${G.border}`,display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:G.card2,border:`1px solid ${G.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:G.gray}}>{(selected.name||"?")[0].toUpperCase()}</div>
+            <div>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:17,fontWeight:700,color:"#fff"}}>{selected.name}</div>
+              <div style={{fontSize:11,color:G.muted}}>{selected.email}</div>
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
+            {mensajes.map(m => {
+              const isAdmin = !m.from_user;
+              return (
+                <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:isAdmin?"flex-end":"flex-start"}}>
+                  <div style={{fontSize:10,color:G.muted,marginBottom:3}}>{isAdmin?"Admin MFA":selected.name} · {formatTime(m.created_at)}</div>
+                  <div style={{maxWidth:"80%",padding:"9px 13px",borderRadius:isAdmin?"14px 4px 14px 14px":"4px 14px 14px 14px",background:isAdmin?G.green:G.card2,border:`1px solid ${isAdmin?"transparent":G.border}`,fontSize:13,color:"#fff",lineHeight:1.5,wordBreak:"break-word"}}>
+                    {m.mensaje}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef}/>
+          </div>
+          <div style={{padding:"10px 14px",borderTop:`1px solid ${G.border}`,display:"flex",gap:8}}>
+            <input
+              value={respuesta} onChange={e=>setRespuesta(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter")sendReply();}}
+              placeholder="Escribí tu respuesta..."
+              style={{...inp,flex:1,padding:"9px 12px",fontSize:13}}
+            />
+            <button onClick={sendReply} disabled={sending||!respuesta.trim()} style={{background:G.green,border:"none",borderRadius:10,padding:"9px 16px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",opacity:sending||!respuesta.trim()?.5:1}}>Enviar ➤</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{...card,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color:G.muted,fontSize:14}}>
+          Seleccioná un ticket para ver la conversación.
+        </div>
+      )}
     </div>
   );
 }
@@ -1996,7 +2240,7 @@ function AdminView({ matches, updateResult, publishResult, clearResult, lockMatc
   return (
     <div>
       <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}} className="admin-tabs">
-        {[["scores","⚽ Marcadores"],["predicciones","📋 Predicciones"],["users","👥 Colaboradores"],["banners","🖼️ Banners"],["log","🔍 Log"]].map(([s,l])=>(
+        {[["scores","⚽ Marcadores"],["predicciones","📋 Predicciones"],["users","👥 Colaboradores"],["banners","🖼️ Banners"],["soporte","🎫 Soporte"],["log","🔍 Log"]].map(([s,l])=>(
           <button key={s} onClick={()=>setSection(s)} style={{padding:"10px 18px",borderRadius:8,border:`1px solid ${section===s?G.green:G.border}`,background:section===s?G.green:G.card,color:"#fff",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700,letterSpacing:1,textTransform:"uppercase",cursor:"pointer"}}>{l}</button>
         ))}
       </div>
@@ -2004,6 +2248,7 @@ function AdminView({ matches, updateResult, publishResult, clearResult, lockMatc
       {section==="banners" ? <BannersAdmin/> :
        section==="log" ? <AccessLogView/> :
        section==="predicciones" ? <PrediccionesAdmin matches={matches} calcPoints={calcPoints}/> :
+       section==="soporte" ? <SoporteAdmin/> :
        section==="scores" ? (
         <div>
           <div style={{...card,padding:16,borderRadius:12,marginBottom:16}}>
