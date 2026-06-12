@@ -446,18 +446,30 @@ export default function App() {
     if (user) return;
     const load = async () => {
       const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado");
-      const { data: preds } = await supabase.from("predicciones").select("*");
       const { data: resultados } = await supabase.from("resultados").select("*").eq("published", true);
-      if (!usuarios || !preds) return;
+
+      // Paginación
+      let allPreds = [];
+      let from = 0;
+      while (true) {
+        const { data: page } = await supabase.from("predicciones").select("*").range(from, from + 999);
+        if (!page || page.length === 0) break;
+        allPreds = allPreds.concat(page);
+        if (page.length < 1000) break;
+        from += 1000;
+      }
+
+      if (!usuarios) return;
       const resMap = {};
-      (resultados||[]).forEach(r => { resMap[r.match_id] = { home:r.home, away:r.away }; });
+      (resultados||[]).forEach(r => { resMap[Number(r.match_id)] = { home:Number(r.home), away:Number(r.away) }; });
+
       const standing = usuarios.filter(u => !u.bloqueado).map(u => {
-        const userPreds = preds.filter(p => p.user_email === u.email);
-        const pts = userPreds.reduce((total, p) => {
-          const res = resMap[p.match_id];
-          if (!res) return total;
-          return total + calcPoints(p, res);
-        }, 0);
+        const userPreds = allPreds.filter(p => p.user_email === u.email);
+        let pts = 0;
+        for (const p of userPreds) {
+          const res = resMap[Number(p.match_id)];
+          if (res) pts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
+        }
         const name = u.nombre && u.primer_apellido ? `${u.nombre} ${u.primer_apellido}` : "Colaborador";
         return { name, pts, preds: userPreds.length };
       }).sort((a,b) => b.pts - a.pts || b.preds - a.preds).slice(0, 10);
@@ -1167,21 +1179,38 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
 
   React.useEffect(() => {
     const load = async () => {
-      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bono_campeon, bono_goleador, bono_mvp, bonos_completado, bloqueado");
-      const { data: preds } = await supabase.from("predicciones").select("*");
+      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado");
       const { data: resultados } = await supabase.from("resultados").select("*").eq("published", true);
+
+      // Paginación — traer TODAS las predicciones de 1000 en 1000
+      let allPreds = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: page } = await supabase.from("predicciones").select("*").range(from, from + pageSize - 1);
+        if (!page || page.length === 0) break;
+        allPreds = allPreds.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+
+      if (!usuarios) { setLoading(false); return; }
+
+      // resMap con keys como Number
       const resMap = {};
-      (resultados||[]).forEach(r => { resMap[r.match_id] = { home:r.home, away:r.away }; });
+      (resultados||[]).forEach(r => { resMap[Number(r.match_id)] = { home:Number(r.home), away:Number(r.away) }; });
+
       const data = usuarios.filter(u => !u.bloqueado).map(u => {
-        const userPreds = preds.filter(p => p.user_email === u.email);
-        const pts = userPreds.reduce((total, p) => {
-          const res = resMap[p.match_id];
-          if (!res) return total;
-          return total + calcPoints(p, res);
-        }, 0);
+        const userPreds = allPreds.filter(p => p.user_email === u.email);
+        let pts = 0;
+        for (const p of userPreds) {
+          const res = resMap[Number(p.match_id)];
+          if (res) pts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
+        }
         const name = u.nombre && u.primer_apellido ? `${u.nombre} ${u.primer_apellido}` : "Colaborador";
         return { name, email:u.email, pts, predCount:userPreds.length };
       }).sort((a,b) => b.pts - a.pts || b.predCount - a.predCount);
+
       setStandings(data);
       setLoading(false);
     };
@@ -1535,20 +1564,31 @@ function PrediccionesAdmin({ matches, calcPoints }) {
   React.useEffect(() => {
     const load = async () => {
       const { data: us } = await supabase.from("usuarios").select("email, nombre, primer_apellido, segundo_apellido, departamento, bono_campeon, bono_goleador, bono_mvp, bonos_completado, bloqueado").order("nombre");
-      const { data: pr } = await supabase.from("predicciones").select("*");
       const { data: re } = await supabase.from("resultados").select("*").eq("published", true);
+
+      // Paginación
+      let pr = [];
+      let from = 0;
+      while (true) {
+        const { data: page } = await supabase.from("predicciones").select("*").range(from, from + 999);
+        if (!page || page.length === 0) break;
+        pr = pr.concat(page);
+        if (page.length < 1000) break;
+        from += 1000;
+      }
+
       if (us) setUsuarios(us.filter(u => !u.bloqueado));
-      if (pr) {
+      if (pr.length > 0) {
         const map = {};
         pr.forEach(p => {
           if (!map[p.user_email]) map[p.user_email] = {};
-          map[p.user_email][p.match_id] = { home: p.home, away: p.away };
+          map[p.user_email][Number(p.match_id)] = { home: p.home, away: p.away };
         });
         setPreds(map);
       }
       if (re) {
         const map = {};
-        re.forEach(r => { map[r.match_id] = { home: r.home, away: r.away }; });
+        re.forEach(r => { map[Number(r.match_id)] = { home: Number(r.home), away: Number(r.away) }; });
         setResultados(map);
       }
       setLoading(false);
@@ -1562,11 +1602,16 @@ function PrediccionesAdmin({ matches, calcPoints }) {
     return `${u.nombre} ${u.primer_apellido}`.toLowerCase().includes(s) || (u.email||"").toLowerCase().includes(s) || (u.departamento||"").toLowerCase().includes(s);
   });
 
-  const totalPts = (email) => playedMatches.reduce((t, m) => {
-    const p = preds[email]?.[m.id];
-    const r = resultados[m.id];
-    return t + (p && r ? calcPoints(p, r) : 0);
-  }, 0);
+  const totalPts = (email) => {
+    let pts = 0;
+    const userPredMap = preds[email] || {};
+    for (const matchId of Object.keys(resultados)) {
+      const p = userPredMap[Number(matchId)];
+      const r = resultados[Number(matchId)];
+      if (p && r) pts += calcPoints({ home: String(p.home), away: String(p.away) }, r);
+    }
+    return pts;
+  };
 
   const exportExcel = () => {
     const esc = v => String(v||"—").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -1637,9 +1682,9 @@ function PrediccionesAdmin({ matches, calcPoints }) {
                     <td style={{padding:"10px 8px",textAlign:"center",fontSize:11,color:G.gray,whiteSpace:"nowrap"}}>{u.departamento||"—"}</td>
                     <td style={{padding:"10px 8px",textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:900,color:G.green}}>{total}</td>
                     {playedMatches.map(m=>{
-                      const p = preds[u.email]?.[m.id];
-                      const r = resultados[m.id];
-                      const pts = p && r ? calcPoints(p, r) : null;
+                      const p = preds[u.email]?.[Number(m.id)];
+                      const r = resultados[Number(m.id)];
+                      const pts = p && r ? calcPoints({ home: String(p.home), away: String(p.away) }, r) : null;
                       return (
                         <td key={m.id} style={{padding:"8px 6px",textAlign:"center"}}>
                           {p ? (
@@ -1710,22 +1755,37 @@ function UserDetailAdmin({ selectedUser, matches, calcPoints, isUserAdmin, toggl
   React.useEffect(() => {
     setLoading(true);
     const load = async () => {
-      const { data: pr } = await supabase.from("predicciones").select("*").eq("user_email", selectedUser.email);
-      const { data: re } = await supabase.from("resultados").select("*");
-      if (pr) { const map = {}; pr.forEach(p => { map[p.match_id] = { home: p.home, away: p.away }; }); setUserPreds(map); }
-      if (re) { const map = {}; re.forEach(r => { map[r.match_id] = { home: r.home, away: r.away }; }); setResultados(map); }
+      // Paginación predicciones del usuario
+      let allPreds = [];
+      let from = 0;
+      while (true) {
+        const { data: page } = await supabase.from("predicciones").select("*").eq("user_email", selectedUser.email).range(from, from + 999);
+        if (!page || page.length === 0) break;
+        allPreds = allPreds.concat(page);
+        if (page.length < 1000) break;
+        from += 1000;
+      }
+      const { data: re } = await supabase.from("resultados").select("*").eq("published", true);
+      const predMap = {};
+      allPreds.forEach(p => { predMap[Number(p.match_id)] = { home: p.home, away: p.away }; });
+      setUserPreds(predMap);
+      if (re) {
+        const map = {};
+        re.forEach(r => { map[Number(r.match_id)] = { home: Number(r.home), away: Number(r.away) }; });
+        setResultados(map);
+      }
       setLoading(false);
     };
     load();
   }, [selectedUser.email]);
 
   const totalPts = matches.reduce((t, m) => {
-    const p = userPreds[m.id];
-    const r = resultados[m.id];
-    return t + (p && r ? calcPoints(p, r) : 0);
+    const p = userPreds[Number(m.id)];
+    const r = resultados[Number(m.id)];
+    return t + (p && r ? calcPoints({ home: String(p.home), away: String(p.away) }, r) : 0);
   }, 0);
 
-  const playedMatches = matches.filter(m => resultados[m.id] !== undefined);
+  const playedMatches = matches.filter(m => resultados[Number(m.id)] !== undefined);
 
   return (
     <div style={{...card, padding:24, borderRadius:12}}>
@@ -1792,10 +1852,10 @@ function UserDetailAdmin({ selectedUser, matches, calcPoints, isUserAdmin, toggl
               ) : (
                 <div style={{display:"grid",gap:8}}>
                   {matches.map(m => {
-                    const p = userPreds[m.id];
-                    const r = resultados[m.id];
-                    const pts = p && r ? calcPoints(p, r) : null;
-                    const hasPred = p && p.home !== undefined && p.home !== "";
+                    const p = userPreds[Number(m.id)];
+                    const r = resultados[Number(m.id)];
+                    const pts = p && r ? calcPoints({ home: String(p.home), away: String(p.away) }, r) : null;
+                    const hasPred = p && p.home !== undefined && p.home !== null;
                     return (
                       <div key={m.id} style={{background:G.card2,border:`1px solid ${pts===5?"rgba(26,158,63,.4)":pts>0?"rgba(255,180,0,.3)":G.border}`,borderRadius:10,padding:"12px 16px",display:"grid",gridTemplateColumns:"auto 1fr auto auto",alignItems:"center",gap:12}}>
                         {/* Fecha y grupo */}
