@@ -311,34 +311,24 @@ function Countdown({ matches }) {
     return () => clearInterval(i);
   }, []);
 
-  const next = React.useMemo(() => {
-    return matches
-      .filter(m => m.status !== "Cerrado")
-      .sort((a, b) => {
-        const toMs = m => {
-          const months = { "JUN": 5 };
-          const [day, monthStr] = m.date.split(" ");
-          const [hourStr, minuteStr] = m.time.replace(" PM","").replace(" AM","").split(":");
-          let hour = parseInt(hourStr);
-          const isPM = m.time.includes("PM");
-          if (isPM && hour !== 12) hour += 12;
-          if (!isPM && hour === 12) hour = 0;
-          return new Date(Date.UTC(2026, months[monthStr], parseInt(day), hour + 6, parseInt(minuteStr))).getTime();
-        };
-        return toMs(a) - toMs(b);
-      })[0];
-  }, [matches]);
+  const toMs = (m) => {
+    const months = { "JUN": 5 };
+    const [day, monthStr] = m.date.split(" ");
+    const [hourStr, minuteStr] = m.time.replace(" PM","").replace(" AM","").split(":");
+    let hour = parseInt(hourStr);
+    const isPM = m.time.includes("PM");
+    if (isPM && hour !== 12) hour += 12;
+    if (!isPM && hour === 12) hour = 0;
+    return new Date(Date.UTC(2026, months[monthStr], parseInt(day), hour + 6, parseInt(minuteStr))).getTime();
+  };
+
+  const next = matches
+    .filter(m => m.status !== "Cerrado")
+    .sort((a, b) => toMs(a) - toMs(b))[0];
 
   if (!next) return null;
 
-  const months = { "JUN": 5 };
-  const [day, monthStr] = next.date.split(" ");
-  const [hourStr, minuteStr] = next.time.replace(" PM","").replace(" AM","").split(":");
-  let hour = parseInt(hourStr);
-  const isPM = next.time.includes("PM");
-  if (isPM && hour !== 12) hour += 12;
-  if (!isPM && hour === 12) hour = 0;
-  const matchMs = new Date(Date.UTC(2026, months[monthStr], parseInt(day), hour + 6, parseInt(minuteStr))).getTime();
+  const matchMs = toMs(next);
   const diffMs = matchMs - now.getTime();
   if (diffMs <= 0) return null;
 
