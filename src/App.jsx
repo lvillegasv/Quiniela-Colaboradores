@@ -381,7 +381,7 @@ export default function App() {
   const [bonosGoleadorOtro, setBonosGoleadorOtro] = useState("");
   const [bonosMVPOtro, setBonosMVPOtro] = useState("");
   const [predictions, setPredictions] = useState({});
-  const [predictionStatus, setPredictionStatus] = useState("");
+  const [predictionStatus, setPredictionStatus] = useState({});
   const [matchFilter, setMatchFilter] = useState("all");
   const [adminResults, setAdminResults] = useState({});
   const [liveStandings, setLiveStandings] = useState([]);
@@ -648,11 +648,15 @@ export default function App() {
         if (p.home === undefined || p.home === "" || p.away === undefined || p.away === "") return false;
         const match = matchList.find(m => m.id === Number(matchId));
         if (!match) return false;
-        return getMatchStatus(match.date, match.time) !== "Cerrado";
+        return getMatchStatus(match.date, match.time, Number(matchId)) !== "Cerrado";
       })
       .map(([matchId, p]) => ({ user_email:user.email, match_id:Number(matchId), home:p.home, away:p.away, updated_at:now.toISOString() }));
-    if (entries.length > 0) await supabase.from("predicciones").upsert(entries, { onConflict:"user_email,match_id" });
-    setPredictionStatus("saved"); setTimeout(()=>setPredictionStatus(""),2000);
+    if (entries.length > 0) {
+      await supabase.from("predicciones").upsert(entries, { onConflict:"user_email,match_id" });
+      const newStatus = {};
+      entries.forEach(e => { newStatus[e.match_id] = "saved"; });
+      setPredictionStatus(s => ({...s, ...newStatus}));
+    }
   };
 
   // Resultados (admin)
@@ -704,8 +708,13 @@ export default function App() {
     supabase.from("predicciones").select("*").eq("user_email", user.email).then(({ data }) => {
       if (data) {
         const map = {};
-        data.forEach(p => { map[p.match_id] = { home: p.home, away: p.away }; });
+        const saved = {};
+        data.forEach(p => {
+          map[p.match_id] = { home: p.home, away: p.away };
+          saved[p.match_id] = "saved";
+        });
         setPredictions(map);
+        setPredictionStatus(saved);
       }
     });
   }, [user?.email]);
@@ -1085,9 +1094,9 @@ function PredictionsView({ matches, predictions, updatePrediction, savePredictio
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 52px auto 52px 1fr",alignItems:"center",gap:8}}>
                     <div style={{textAlign:"right"}}><div style={{fontSize:20}}>{m.homeTeam.flag}</div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.home}</div></div>
-                    <input value={pred.home||""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"home":v}}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
+                    <input value={pred.home??""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"home":v}}));setPredictionStatus(s=>({...s,[m.id]:undefined}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
                     <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700,color:G.green}}>VS</span>
-                    <input value={pred.away||""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"away":v}}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
+                    <input value={pred.away??""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"away":v}}));setPredictionStatus(s=>({...s,[m.id]:undefined}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
                     <div><div style={{fontSize:20}}>{m.awayTeam.flag}</div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.away}</div></div>
                   </div>
                   {m.result&&(
@@ -1102,11 +1111,11 @@ function PredictionsView({ matches, predictions, updatePrediction, savePredictio
                         const p = predictions[m.id];
                         if (!p || p.home===undefined || p.home==="" || p.away===undefined || p.away==="") return;
                         await supabase.from("predicciones").upsert({ user_email:user.email, match_id:m.id, home:p.home, away:p.away, updated_at:new Date().toISOString() }, { onConflict:"user_email,match_id" });
-                        setPredictionStatus("saved_"+m.id); setTimeout(()=>setPredictionStatus(""),2000);
+                        setPredictionStatus(s => ({...s, [m.id]: "saved"}));
                       }}
-                      style={{marginTop:8,width:"100%",background:"rgba(26,158,63,.1)",border:"1px solid rgba(26,158,63,.3)",borderRadius:8,padding:"7px",fontSize:12,fontWeight:700,color:G.green,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
+                      style={{marginTop:8,width:"100%",background:predictionStatus[m.id]==="saved"?"rgba(26,158,63,.2)":"rgba(26,158,63,.1)",border:`1px solid ${predictionStatus[m.id]==="saved"?"rgba(26,158,63,.5)":"rgba(26,158,63,.3)"}`,borderRadius:8,padding:"7px",fontSize:12,fontWeight:700,color:G.green,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
                     >
-                      {predictionStatus==="saved_"+m.id ? "✅ Guardado" : "💾 Guardar"}
+                      {predictionStatus[m.id]==="saved" ? "✅ Guardado" : "💾 Guardar"}
                     </button>
                   )}
                 </div>
@@ -1115,8 +1124,7 @@ function PredictionsView({ matches, predictions, updatePrediction, savePredictio
           </div>
         </div>
       ))}
-      {predictionStatus==="saved"&&<div style={{borderRadius:10,padding:"12px 16px",marginBottom:16,background:"rgba(26,158,63,.1)",border:"1px solid rgba(26,158,63,.3)",color:G.green,fontSize:13}}>✅ Predicción guardada automáticamente.</div>}
-      {predictionStatus==="closed"&&<div style={{borderRadius:10,padding:"12px 16px",marginBottom:16,background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.3)",color:"#ff5050",fontSize:13}}>🔒 Este partido ya cerró. No se puede modificar la predicción.</div>}
+      {Object.values(predictionStatus).includes("closed")&&<div style={{borderRadius:10,padding:"12px 16px",marginBottom:16,background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.3)",color:"#ff5050",fontSize:13}}>🔒 Este partido ya cerró. No se puede modificar la predicción.</div>}
       <button onClick={savePredictions} style={{...greenBtn,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><Save size={18}/> Guardar predicciones</button>
     </div>
   );
