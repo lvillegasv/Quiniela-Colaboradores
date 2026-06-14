@@ -708,7 +708,7 @@ export default function App() {
         setPredictions(map);
       }
     });
-  }, [user]);
+  }, [user?.email]);
 
   // ─── PANTALLA: FORGOT PASSWORD ──────────────────────────────────────────────
   if (!user && authMode === "forgot") {
@@ -1085,9 +1085,9 @@ function PredictionsView({ matches, predictions, updatePrediction, savePredictio
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 52px auto 52px 1fr",alignItems:"center",gap:8}}>
                     <div style={{textAlign:"right"}}><div style={{fontSize:20}}>{m.homeTeam.flag}</div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.home}</div></div>
-                    <input value={pred.home||""} onChange={e=>updatePrediction(m.id,"home",e.target.value)} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="0"/>
+                    <input value={pred.home||""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"home":v}}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
                     <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700,color:G.green}}>VS</span>
-                    <input value={pred.away||""} onChange={e=>updatePrediction(m.id,"away",e.target.value)} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="0"/>
+                    <input value={pred.away||""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"away":v}}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
                     <div><div style={{fontSize:20}}>{m.awayTeam.flag}</div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.away}</div></div>
                   </div>
                   {m.result&&(
@@ -1095,6 +1095,19 @@ function PredictionsView({ matches, predictions, updatePrediction, savePredictio
                       <span style={{fontSize:12,color:G.green}}>Resultado: {m.result.home} - {m.result.away}</span>
                       <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:900,color:G.green}}>{calcPoints(pred,m.result)} pts</span>
                     </div>
+                  )}
+                  {m.status !== "Cerrado" && (
+                    <button
+                      onClick={async()=>{
+                        const p = predictions[m.id];
+                        if (!p || p.home===undefined || p.home==="" || p.away===undefined || p.away==="") return;
+                        await supabase.from("predicciones").upsert({ user_email:user.email, match_id:m.id, home:p.home, away:p.away, updated_at:new Date().toISOString() }, { onConflict:"user_email,match_id" });
+                        setPredictionStatus("saved_"+m.id); setTimeout(()=>setPredictionStatus(""),2000);
+                      }}
+                      style={{marginTop:8,width:"100%",background:"rgba(26,158,63,.1)",border:"1px solid rgba(26,158,63,.3)",borderRadius:8,padding:"7px",fontSize:12,fontWeight:700,color:G.green,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
+                    >
+                      {predictionStatus==="saved_"+m.id ? "✅ Guardado" : "💾 Guardar"}
+                    </button>
                   )}
                 </div>
               );
