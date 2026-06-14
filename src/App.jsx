@@ -1094,9 +1094,9 @@ function PredictionsView({ matches, predictions, updatePrediction, savePredictio
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 52px auto 52px 1fr",alignItems:"center",gap:8}}>
                     <div style={{textAlign:"right"}}><div style={{fontSize:20}}>{m.homeTeam.flag}</div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.home}</div></div>
-                    <input value={pred.home??""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"home":v}}));setPredictionStatus(s=>({...s,[m.id]:undefined}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
+                    <input value={pred.home !== undefined && pred.home !== null ? String(pred.home) : ""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"home":v}}));setPredictionStatus(s=>({...s,[m.id]:undefined}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
                     <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700,color:G.green}}>VS</span>
-                    <input value={pred.away??""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"away":v}}));setPredictionStatus(s=>({...s,[m.id]:undefined}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
+                    <input value={pred.away !== undefined && pred.away !== null ? String(pred.away) : ""} onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,"").slice(0,2);setPredictions(c=>({...c,[m.id]:{...(c[m.id]||{}),"away":v}}));setPredictionStatus(s=>({...s,[m.id]:undefined}));}} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:22,fontWeight:900,padding:"8px 4px"}} placeholder="–"/>
                     <div><div style={{fontSize:20}}>{m.awayTeam.flag}</div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700}}>{m.away}</div></div>
                   </div>
                   {m.result&&(
