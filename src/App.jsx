@@ -1090,7 +1090,9 @@ function SoporteFloat({ user, onClose }) {
   const [mensajes, setMensajes] = React.useState([]);
   const [texto, setTexto] = React.useState("");
   const [sending, setSending] = React.useState(false);
+  const [uploadingImg, setUploadingImg] = React.useState(false);
   const bottomRef = React.useRef(null);
+  const fileRef = React.useRef(null);
   const userName = [user.firstName, user.lastName1].filter(Boolean).join(" ") || "Colaborador";
 
   const load = React.useCallback(async () => {
@@ -1107,8 +1109,22 @@ function SoporteFloat({ user, onClose }) {
   const send = async () => {
     const t = texto.trim(); if (!t) return;
     setSending(true);
-    await supabase.from("soporte").insert({ user_email: user.email, user_name: userName, mensaje: t, from_user: true });
+    await supabase.from("soporte").insert({ user_email: user.email, user_name: userName, mensaje: t, from_user: true, tipo: "texto" });
     setTexto(""); await load(); setSending(false);
+  };
+
+  const uploadImage = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    setUploadingImg(true);
+    try {
+      const fileName = `soporte_${Date.now()}_${file.name.replace(/\s/g,"_")}`;
+      const { error } = await supabase.storage.from("soporte-images").upload(fileName, file, { contentType: file.type });
+      if (error) { alert("Error al subir imagen: " + error.message); setUploadingImg(false); e.target.value=""; return; }
+      const { data: urlData } = supabase.storage.from("soporte-images").getPublicUrl(fileName);
+      await supabase.from("soporte").insert({ user_email: user.email, user_name: userName, mensaje: "📷 Imagen adjunta", imagen_url: urlData.publicUrl, from_user: true, tipo: "imagen" });
+      await load();
+    } catch(err) { alert("Error: " + err.message); }
+    finally { setUploadingImg(false); e.target.value=""; }
   };
 
   const formatTime = (ts) => {
@@ -1140,16 +1156,24 @@ function SoporteFloat({ user, onClose }) {
         {mensajes.map(m => (
           <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:m.from_user?"flex-end":"flex-start"}}>
             <div style={{fontSize:10,color:G.muted,marginBottom:3}}>{m.from_user?"Tú":"Admin MFA"} · {formatTime(m.created_at)}</div>
-            <div style={{maxWidth:"85%",padding:"9px 13px",borderRadius:m.from_user?"14px 4px 14px 14px":"4px 14px 14px 14px",background:m.from_user?G.green:G.card2,border:`1px solid ${m.from_user?"transparent":G.border}`,fontSize:13,color:"#fff",lineHeight:1.5,wordBreak:"break-word"}}>
-              {m.mensaje}
-            </div>
+            {m.tipo==="imagen" && m.imagen_url ? (
+              <img src={m.imagen_url} alt="img" onClick={()=>window.open(m.imagen_url,"_blank")} style={{maxWidth:220,maxHeight:160,borderRadius:10,border:`1px solid ${G.border}`,objectFit:"cover",cursor:"pointer"}}/>
+            ) : (
+              <div style={{maxWidth:"85%",padding:"9px 13px",borderRadius:m.from_user?"14px 4px 14px 14px":"4px 14px 14px 14px",background:m.from_user?G.green:G.card2,border:`1px solid ${m.from_user?"transparent":G.border}`,fontSize:13,color:"#fff",lineHeight:1.5,wordBreak:"break-word"}}>
+                {m.mensaje}
+              </div>
+            )}
           </div>
         ))}
         <div ref={bottomRef}/>
       </div>
-      <div style={{padding:"10px 12px",borderTop:`1px solid ${G.border}`,display:"flex",gap:8,borderRadius:"0 0 20px 20px"}}>
+      <div style={{padding:"10px 12px",borderTop:`1px solid ${G.border}`,display:"flex",gap:8,alignItems:"center",borderRadius:"0 0 20px 20px"}}>
+        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadImage}/>
+        <button onClick={()=>fileRef.current?.click()} disabled={uploadingImg} title="Adjuntar imagen" style={{background:"rgba(255,255,255,.07)",border:`1px solid ${G.border}`,borderRadius:8,padding:"8px 10px",color:G.gray,cursor:"pointer",fontSize:16,flexShrink:0,opacity:uploadingImg?.5:1}}>
+          {uploadingImg?"⏳":"📎"}
+        </button>
         <input value={texto} onChange={e=>setTexto(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Escribí tu mensaje..." style={{...inp,flex:1,padding:"9px 12px",fontSize:13}}/>
-        <button onClick={send} disabled={sending||!texto.trim()} style={{background:G.green,border:"none",borderRadius:10,padding:"9px 14px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",opacity:sending||!texto.trim()?.5:1}}>➤</button>
+        <button onClick={send} disabled={sending||!texto.trim()} style={{background:G.green,border:"none",borderRadius:10,padding:"9px 14px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",opacity:sending||!texto.trim()?.5:1,flexShrink:0}}>➤</button>
       </div>
     </div>
   );
@@ -1167,7 +1191,9 @@ function SoporteAdmin() {
   const [broadcastMsg, setBroadcastMsg] = React.useState("");
   const [broadcasting, setBroadcasting] = React.useState(false);
   const [broadcastDone, setBroadcastDone] = React.useState(false);
+  const [uploadingImg, setUploadingImg] = React.useState(false);
   const bottomRef = React.useRef(null);
+  const fileRef = React.useRef(null);
 
   const loadTickets = React.useCallback(async () => {
     const { data } = await supabase.from("soporte").select("user_email, user_name, mensaje, created_at, leido_admin, from_user").order("created_at", { ascending: false });
@@ -1195,11 +1221,26 @@ function SoporteAdmin() {
   const sendReply = async () => {
     if (!respuesta.trim() || !selected) return;
     setSending(true);
-    await supabase.from("soporte").insert({ user_email:selected.email, user_name:"Admin MFA", mensaje:respuesta.trim(), from_user:false, leido_user:false });
+    await supabase.from("soporte").insert({ user_email:selected.email, user_name:"Admin MFA", mensaje:respuesta.trim(), from_user:false, leido_user:false, tipo:"texto" });
     setRespuesta("");
     const { data } = await supabase.from("soporte").select("*").eq("user_email", selected.email).order("created_at", { ascending: true });
     if (data) setMensajes(data);
     setSending(false);
+  };
+
+  const uploadImageAdmin = async (e) => {
+    const file = e.target.files[0]; if (!file || !selected) return;
+    setUploadingImg(true);
+    try {
+      const fileName = `soporte_admin_${Date.now()}_${file.name.replace(/\s/g,"_")}`;
+      const { error } = await supabase.storage.from("soporte-images").upload(fileName, file, { contentType: file.type });
+      if (error) { alert("Error al subir imagen: " + error.message); setUploadingImg(false); e.target.value=""; return; }
+      const { data: urlData } = supabase.storage.from("soporte-images").getPublicUrl(fileName);
+      await supabase.from("soporte").insert({ user_email:selected.email, user_name:"Admin MFA", mensaje:"📷 Imagen adjunta", imagen_url:urlData.publicUrl, from_user:false, leido_user:false, tipo:"imagen" });
+      const { data } = await supabase.from("soporte").select("*").eq("user_email", selected.email).order("created_at", { ascending: true });
+      if (data) setMensajes(data);
+    } catch(err) { alert("Error: " + err.message); }
+    finally { setUploadingImg(false); e.target.value=""; }
   };
 
   const sendBroadcast = async () => {
@@ -1308,16 +1349,24 @@ function SoporteAdmin() {
               {mensajes.map(m => (
                 <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:!m.from_user?"flex-end":"flex-start"}}>
                   <div style={{fontSize:10,color:G.muted,marginBottom:3}}>{!m.from_user?"Admin MFA":selected.name} · {formatTime(m.created_at)}</div>
-                  <div style={{maxWidth:"80%",padding:"9px 13px",borderRadius:!m.from_user?"14px 4px 14px 14px":"4px 14px 14px 14px",background:!m.from_user?G.green:G.card2,border:`1px solid ${!m.from_user?"transparent":G.border}`,fontSize:13,color:"#fff",lineHeight:1.5,wordBreak:"break-word"}}>
-                    {m.mensaje}
-                  </div>
+                  {m.tipo==="imagen" && m.imagen_url ? (
+                    <img src={m.imagen_url} alt="img" onClick={()=>window.open(m.imagen_url,"_blank")} style={{maxWidth:240,maxHeight:180,borderRadius:10,border:`1px solid ${G.border}`,objectFit:"cover",cursor:"pointer"}}/>
+                  ) : (
+                    <div style={{maxWidth:"80%",padding:"9px 13px",borderRadius:!m.from_user?"14px 4px 14px 14px":"4px 14px 14px 14px",background:!m.from_user?G.green:G.card2,border:`1px solid ${!m.from_user?"transparent":G.border}`,fontSize:13,color:"#fff",lineHeight:1.5,wordBreak:"break-word"}}>
+                      {m.mensaje}
+                    </div>
+                  )}
                 </div>
               ))}
               <div ref={bottomRef}/>
             </div>
-            <div style={{padding:"10px 14px",borderTop:`1px solid ${G.border}`,display:"flex",gap:8}}>
+            <div style={{padding:"10px 14px",borderTop:`1px solid ${G.border}`,display:"flex",gap:8,alignItems:"center"}}>
+              <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={uploadImageAdmin}/>
+              <button onClick={()=>fileRef.current?.click()} disabled={uploadingImg} title="Adjuntar imagen" style={{background:"rgba(255,255,255,.07)",border:`1px solid ${G.border}`,borderRadius:8,padding:"8px 10px",color:G.gray,cursor:"pointer",fontSize:16,flexShrink:0,opacity:uploadingImg?.5:1}}>
+                {uploadingImg?"⏳":"📎"}
+              </button>
               <input value={respuesta} onChange={e=>setRespuesta(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendReply();}} placeholder="Escribí tu respuesta..." style={{...inp,flex:1,padding:"9px 12px",fontSize:13}}/>
-              <button onClick={sendReply} disabled={sending||!respuesta.trim()} style={{background:G.green,border:"none",borderRadius:10,padding:"9px 16px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",opacity:sending||!respuesta.trim()?.5:1}}>Enviar ➤</button>
+              <button onClick={sendReply} disabled={sending||!respuesta.trim()} style={{background:G.green,border:"none",borderRadius:10,padding:"9px 16px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",opacity:sending||!respuesta.trim()?.5:1,flexShrink:0}}>Enviar ➤</button>
             </div>
           </div>
         ) : (
