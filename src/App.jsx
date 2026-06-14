@@ -1048,7 +1048,7 @@ export default function App() {
         )}
 
         <div>
-          {view==="predictions"&&<PredictionsView matches={matches} predictions={predictions} updatePrediction={updatePrediction} savePredictions={savePredictions} predictionStatus={predictionStatus} matchFilter={matchFilter} setMatchFilter={setMatchFilter} calcPoints={calcPoints}/>}
+          {view==="predictions"&&<PredictionsView matches={matches} predictions={predictions} setPredictions={setPredictions} savePredictions={savePredictions} predictionStatus={predictionStatus} setPredictionStatus={setPredictionStatus} matchFilter={matchFilter} setMatchFilter={setMatchFilter} calcPoints={calcPoints} user={user}/>}
           {view==="results"&&<ResultsView matches={matches} predictions={predictions} calcPoints={calcPoints}/>}
           {view==="standings"&&<StandingsView matches={matches} predictions={predictions} calcPoints={calcPoints} user={user}/>}
           {view==="profile"&&<ProfileView user={user} setUser={setUser} predictions={predictions} matches={matches} calcPoints={calcPoints}/>}
@@ -1062,7 +1062,7 @@ export default function App() {
 }
 
 // ─── PREDICCIONES ─────────────────────────────────────────────────────────────
-function PredictionsView({ matches, predictions, updatePrediction, savePredictions, predictionStatus, matchFilter, setMatchFilter, calcPoints }) {
+function PredictionsView({ matches, predictions, setPredictions, savePredictions, predictionStatus, setPredictionStatus, matchFilter, setMatchFilter, calcPoints, user }) {
   const groups = matches.reduce((acc,m)=>{
     if(matchFilter==="all"||m.status===matchFilter){acc[m.date]=acc[m.date]||[];acc[m.date].push(m);}
     return acc;
