@@ -1163,6 +1163,10 @@ function SoporteAdmin() {
   const [respuesta, setRespuesta] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [search, setSearch] = React.useState("");
+  const [showBroadcast, setShowBroadcast] = React.useState(false);
+  const [broadcastMsg, setBroadcastMsg] = React.useState("");
+  const [broadcasting, setBroadcasting] = React.useState(false);
+  const [broadcastDone, setBroadcastDone] = React.useState(false);
   const bottomRef = React.useRef(null);
 
   const loadTickets = React.useCallback(async () => {
@@ -1181,6 +1185,7 @@ function SoporteAdmin() {
 
   const selectTicket = async (ticket) => {
     setSelected(ticket);
+    setShowBroadcast(false);
     const { data } = await supabase.from("soporte").select("*").eq("user_email", ticket.email).order("created_at", { ascending: true });
     if (data) setMensajes(data);
     await supabase.from("soporte").update({ leido_admin: true }).eq("user_email", ticket.email).eq("from_user", true);
@@ -1197,6 +1202,31 @@ function SoporteAdmin() {
     setSending(false);
   };
 
+  const sendBroadcast = async () => {
+    if (!broadcastMsg.trim()) return;
+    setBroadcasting(true);
+    // Traer todos los colaboradores activos
+    const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido").eq("bloqueado", false);
+    if (usuarios && usuarios.length > 0) {
+      const inserts = usuarios.map(u => ({
+        user_email: u.email,
+        user_name: "Admin MFA",
+        mensaje: broadcastMsg.trim(),
+        from_user: false,
+        leido_user: false,
+      }));
+      // Insertar en lotes de 50
+      for (let i = 0; i < inserts.length; i += 50) {
+        await supabase.from("soporte").insert(inserts.slice(i, i + 50));
+      }
+    }
+    setBroadcastMsg("");
+    setBroadcasting(false);
+    setBroadcastDone(true);
+    setTimeout(() => setBroadcastDone(false), 3000);
+    await loadTickets();
+  };
+
   const formatTime = (ts) => {
     const d = new Date(ts);
     const cr = new Date(d.getTime() - 6*60*60*1000);
@@ -1207,58 +1237,96 @@ function SoporteAdmin() {
   const filtered = tickets.filter(t => (t.name||"").toLowerCase().includes(search.toLowerCase()) || (t.email||"").toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:16,height:"65vh"}} className="admin-users-grid">
-      <div style={{...card,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        <div style={{padding:"12px 14px",borderBottom:`1px solid ${G.border}`}}>
-          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,color:G.green,marginBottom:8}}>🎫 TICKETS ({tickets.length})</div>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." style={{...inp,padding:"7px 10px",fontSize:12}}/>
-        </div>
-        <div style={{flex:1,overflowY:"auto"}}>
-          {filtered.length === 0 && <div style={{padding:20,textAlign:"center",fontSize:13,color:G.muted}}>Sin tickets aún.</div>}
-          {filtered.map(t => (
-            <div key={t.email} onClick={()=>selectTicket(t)} style={{padding:"12px 14px",cursor:"pointer",borderBottom:`1px solid ${G.border}`,background:selected?.email===t.email?"rgba(26,158,63,.08)":"transparent",display:"flex",gap:10,alignItems:"flex-start"}}>
-              <div style={{width:34,height:34,borderRadius:"50%",background:t.unread>0?G.green:G.card2,border:`1px solid ${t.unread>0?G.green:G.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:t.unread>0?"#fff":G.gray,flexShrink:0}}>
-                {t.unread > 0 ? t.unread : (t.name||"?")[0].toUpperCase()}
-              </div>
-              <div style={{minWidth:0,flex:1}}>
-                <div style={{fontSize:13,fontWeight:t.unread>0?700:600,color:t.unread>0?"#fff":G.gray,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name||t.email}</div>
-                <div style={{fontSize:11,color:G.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{t.lastMsg}</div>
-                <div style={{fontSize:10,color:G.muted,marginTop:2}}>{formatTime(t.lastTime)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+    <div>
+      {/* Barra superior con botón broadcast */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,color:G.green,textTransform:"uppercase"}}>🎫 Mensajería con colaboradores</div>
+        <button onClick={()=>{setShowBroadcast(s=>!s);setSelected(null);}} style={{background:showBroadcast?"rgba(255,180,0,.2)":"rgba(26,158,63,.1)",border:`1px solid ${showBroadcast?"rgba(255,180,0,.4)":"rgba(26,158,63,.3)"}`,borderRadius:10,padding:"9px 18px",color:showBroadcast?"#ffb400":G.green,fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700,cursor:"pointer",letterSpacing:.5}}>
+          📢 Mensaje a todos
+        </button>
       </div>
-      {selected ? (
-        <div style={{...card,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          <div style={{padding:"14px 18px",borderBottom:`1px solid ${G.border}`,display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:G.card2,border:`1px solid ${G.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:G.gray}}>{(selected.name||"?")[0].toUpperCase()}</div>
-            <div>
-              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:17,fontWeight:700,color:"#fff"}}>{selected.name}</div>
-              <div style={{fontSize:11,color:G.muted}}>{selected.email}</div>
-            </div>
+
+      {/* Panel broadcast */}
+      {showBroadcast && (
+        <div style={{...card,padding:20,borderRadius:14,marginBottom:16,border:"1px solid rgba(255,180,0,.3)"}}>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:17,fontWeight:700,color:"#ffb400",marginBottom:12}}>📢 Enviar mensaje a todos los colaboradores</div>
+          <div style={{fontSize:12,color:G.muted,marginBottom:12}}>El mensaje llegará al chat de soporte de cada colaborador activo.</div>
+          <textarea
+            value={broadcastMsg}
+            onChange={e=>setBroadcastMsg(e.target.value)}
+            placeholder="Escribí el mensaje para todos..."
+            rows={3}
+            style={{...inp,resize:"none",lineHeight:1.5,marginBottom:12}}
+          />
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <button
+              onClick={sendBroadcast}
+              disabled={broadcasting||!broadcastMsg.trim()}
+              style={{background:"#ffb400",border:"none",borderRadius:10,padding:"10px 24px",color:"#000",fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:900,cursor:"pointer",opacity:broadcasting||!broadcastMsg.trim()?.5:1}}
+            >
+              {broadcasting?"Enviando...":"📢 Enviar a todos"}
+            </button>
+            {broadcastDone && <span style={{fontSize:13,color:G.green,fontWeight:700}}>✅ Mensaje enviado a todos los colaboradores</span>}
           </div>
-          <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
-            {mensajes.map(m => (
-              <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:!m.from_user?"flex-end":"flex-start"}}>
-                <div style={{fontSize:10,color:G.muted,marginBottom:3}}>{!m.from_user?"Admin MFA":selected.name} · {formatTime(m.created_at)}</div>
-                <div style={{maxWidth:"80%",padding:"9px 13px",borderRadius:!m.from_user?"14px 4px 14px 14px":"4px 14px 14px 14px",background:!m.from_user?G.green:G.card2,border:`1px solid ${!m.from_user?"transparent":G.border}`,fontSize:13,color:"#fff",lineHeight:1.5,wordBreak:"break-word"}}>
-                  {m.mensaje}
+        </div>
+      )}
+
+      {/* Lista + conversación */}
+      <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:16,height:"60vh"}} className="admin-users-grid">
+        <div style={{...card,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{padding:"12px 14px",borderBottom:`1px solid ${G.border}`}}>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700,color:G.green,marginBottom:8}}>CONVERSACIONES ({tickets.length})</div>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." style={{...inp,padding:"7px 10px",fontSize:12}}/>
+          </div>
+          <div style={{flex:1,overflowY:"auto"}}>
+            {filtered.length === 0 && <div style={{padding:20,textAlign:"center",fontSize:13,color:G.muted}}>Sin tickets aún.</div>}
+            {filtered.map(t => (
+              <div key={t.email} onClick={()=>selectTicket(t)} style={{padding:"12px 14px",cursor:"pointer",borderBottom:`1px solid ${G.border}`,background:selected?.email===t.email?"rgba(26,158,63,.08)":"transparent",display:"flex",gap:10,alignItems:"flex-start"}}>
+                <div style={{width:34,height:34,borderRadius:"50%",background:t.unread>0?G.green:G.card2,border:`1px solid ${t.unread>0?G.green:G.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:t.unread>0?"#fff":G.gray,flexShrink:0}}>
+                  {t.unread > 0 ? t.unread : (t.name||"?")[0].toUpperCase()}
+                </div>
+                <div style={{minWidth:0,flex:1}}>
+                  <div style={{fontSize:13,fontWeight:t.unread>0?700:600,color:t.unread>0?"#fff":G.gray,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name||t.email}</div>
+                  <div style={{fontSize:11,color:G.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{t.lastMsg}</div>
+                  <div style={{fontSize:10,color:G.muted,marginTop:2}}>{formatTime(t.lastTime)}</div>
                 </div>
               </div>
             ))}
-            <div ref={bottomRef}/>
-          </div>
-          <div style={{padding:"10px 14px",borderTop:`1px solid ${G.border}`,display:"flex",gap:8}}>
-            <input value={respuesta} onChange={e=>setRespuesta(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendReply();}} placeholder="Escribí tu respuesta..." style={{...inp,flex:1,padding:"9px 12px",fontSize:13}}/>
-            <button onClick={sendReply} disabled={sending||!respuesta.trim()} style={{background:G.green,border:"none",borderRadius:10,padding:"9px 16px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",opacity:sending||!respuesta.trim()?.5:1}}>Enviar ➤</button>
           </div>
         </div>
-      ) : (
-        <div style={{...card,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color:G.muted,fontSize:14}}>
-          Seleccioná un ticket para ver la conversación.
-        </div>
-      )}
+
+        {selected ? (
+          <div style={{...card,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{padding:"14px 18px",borderBottom:`1px solid ${G.border}`,display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:36,height:36,borderRadius:"50%",background:G.card2,border:`1px solid ${G.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:G.gray}}>{(selected.name||"?")[0].toUpperCase()}</div>
+              <div>
+                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:17,fontWeight:700,color:"#fff"}}>{selected.name}</div>
+                <div style={{fontSize:11,color:G.muted}}>{selected.email}</div>
+              </div>
+            </div>
+            <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
+              {mensajes.map(m => (
+                <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:!m.from_user?"flex-end":"flex-start"}}>
+                  <div style={{fontSize:10,color:G.muted,marginBottom:3}}>{!m.from_user?"Admin MFA":selected.name} · {formatTime(m.created_at)}</div>
+                  <div style={{maxWidth:"80%",padding:"9px 13px",borderRadius:!m.from_user?"14px 4px 14px 14px":"4px 14px 14px 14px",background:!m.from_user?G.green:G.card2,border:`1px solid ${!m.from_user?"transparent":G.border}`,fontSize:13,color:"#fff",lineHeight:1.5,wordBreak:"break-word"}}>
+                    {m.mensaje}
+                  </div>
+                </div>
+              ))}
+              <div ref={bottomRef}/>
+            </div>
+            <div style={{padding:"10px 14px",borderTop:`1px solid ${G.border}`,display:"flex",gap:8}}>
+              <input value={respuesta} onChange={e=>setRespuesta(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendReply();}} placeholder="Escribí tu respuesta..." style={{...inp,flex:1,padding:"9px 12px",fontSize:13}}/>
+              <button onClick={sendReply} disabled={sending||!respuesta.trim()} style={{background:G.green,border:"none",borderRadius:10,padding:"9px 16px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",opacity:sending||!respuesta.trim()?.5:1}}>Enviar ➤</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{...card,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color:G.muted,fontSize:14,flexDirection:"column",gap:8}}>
+            <span style={{fontSize:32}}>💬</span>
+            Seleccioná una conversación para responder.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
