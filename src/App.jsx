@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react"; prueba
 import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import { Save, LogOut } from "lucide-react";
