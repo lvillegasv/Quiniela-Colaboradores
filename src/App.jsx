@@ -70,7 +70,8 @@ const TOP_JUGADORES = [
 
 // ─── PUNTOS ───────────────────────────────────────────────────────────────────
 function calcPoints(pred, result) {
-  if (!pred || pred.home === "" || pred.away === "") return 0;
+  if (!pred || pred.home === undefined || pred.home === null || pred.home === "" || pred.away === undefined || pred.away === null || pred.away === "") return 0;
+  if (!result || result.home === undefined || result.home === null) return 0;
   const h = Number(pred.home), a = Number(pred.away);
   if (h === result.home && a === result.away) return 5;
   const pd = h - a, rd = result.home - result.away;
