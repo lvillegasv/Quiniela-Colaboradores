@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react"; prueba otra vez ds
+// v2.1 — Modal publicitario con countdown
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import { Save, LogOut } from "lucide-react";
