@@ -1033,35 +1033,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Modal bienvenida */}
-        {showWelcome && (
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-            <div style={{background:G.card,border:`1px solid ${G.green}`,borderRadius:20,padding:32,maxWidth:560,width:"100%",maxHeight:"80vh",overflowY:"auto"}}>
-              <div style={{textAlign:"center",marginBottom:24}}>
-                <div style={{fontSize:40,marginBottom:12}}>🏆</div>
-                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:G.green,textTransform:"uppercase",letterSpacing:1}}>Quiniela MFA Colaboradores</div>
-                <div style={{fontSize:14,color:G.gray,marginTop:6}}>Mundial 2026 · Bienvenido</div>
-              </div>
-              <div style={{background:G.card2,border:`1px solid ${G.border}`,borderRadius:12,padding:20,marginBottom:20}}>
-                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:700,color:"#fff",textTransform:"uppercase",marginBottom:14}}>📋 Reglas y puntaje</div>
-                {[
-                  ["🎯 Marcador exacto","5 pts — acertás el resultado exacto"],
-                  ["✅ Ganador correcto","3 pts — acertás quién gana o empate"],
-                  ["📊 Diferencia correcta","+1 pt — la diferencia de goles es la misma"],
-                  ["⏰ Cierre de predicciones","Se cierran al inicio de cada partido"],
-                  ["🏅 Ranking","Se actualiza después de cada partido publicado"],
-                  ["🎁 Premios","Los mejores al final del torneo se llevan premios"],
-                ].map(([title, desc]) => (
-                  <div key={title} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"10px 0",borderBottom:`1px solid ${G.border}`}}>
-                    <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>{title}</span>
-                    <span style={{fontSize:12,color:G.gray,textAlign:"right",maxWidth:"55%"}}>{desc}</span>
-                  </div>
-                ))}
-              </div>
-              <button onClick={()=>setShowWelcome(false)} style={{...greenBtn,fontSize:16,letterSpacing:1}}>✅ Entendido — ¡A jugar!</button>
-            </div>
-          </div>
-        )}
+        {/* Modal publicidad — se muestra cada vez que ingresan */}
+        {showWelcome && <AdModal onClose={()=>setShowWelcome(false)}/>}
 
         <div>
           {view==="predictions"&&<PredictionsView matches={matches} predictions={predictions} setPredictions={setPredictions} savePredictions={savePredictions} predictionStatus={predictionStatus} setPredictionStatus={setPredictionStatus} matchFilter={matchFilter} setMatchFilter={setMatchFilter} calcPoints={calcPoints} user={user}/>}
@@ -1081,6 +1054,86 @@ export default function App() {
         )}
         {showSoporte && !isAdminUser && <SoporteFloat user={user} onClose={()=>setShowSoporte(false)}/>}
       </div>
+    </div>
+  );
+}
+
+// ─── AD MODAL ─────────────────────────────────────────────────────────────────
+function AdModal({ onClose }) {
+  const [seconds, setSeconds] = React.useState(10);
+  const [adUrl, setAdUrl] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  // Cargar imagen del banner slot 5 (exclusivo para publicidad del modal)
+  React.useEffect(() => {
+    supabase.from("banners").select("imagen_url").eq("orden", 5).eq("activo", true).single()
+      .then(({ data }) => {
+        if (data?.imagen_url) setAdUrl(data.imagen_url);
+        setLoading(false);
+      });
+  }, []);
+
+  // Countdown
+  React.useEffect(() => {
+    if (seconds <= 0) return;
+    const t = setTimeout(() => setSeconds(s => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [seconds]);
+
+  const canClose = seconds <= 0;
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{position:"relative",width:"100%",maxWidth:480}}>
+
+        {/* Botón cerrar — bloqueado durante countdown */}
+        <div style={{position:"absolute",top:-44,right:0,display:"flex",alignItems:"center",gap:10,zIndex:10}}>
+          {!canClose && (
+            <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(0,0,0,.6)",borderRadius:100,padding:"6px 14px",border:"1px solid rgba(255,255,255,.15)"}}>
+              <div style={{width:24,height:24,borderRadius:"50%",border:"2px solid rgba(255,255,255,.3)",borderTopColor:"#fff",animation:"spin 1s linear infinite"}}/>
+              <span style={{fontSize:13,color:"#fff",fontWeight:700}}>{seconds}s</span>
+            </div>
+          )}
+          <button
+            onClick={canClose ? onClose : undefined}
+            style={{
+              width:36,height:36,borderRadius:"50%",border:"none",
+              background:canClose?"#fff":"rgba(255,255,255,.2)",
+              color:canClose?"#000":"rgba(255,255,255,.4)",
+              fontSize:18,cursor:canClose?"pointer":"default",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontWeight:700,transition:"all .3s"
+            }}
+          >✕</button>
+        </div>
+
+        {/* Imagen publicitaria — formato 576x1024 (vertical) */}
+        <div style={{borderRadius:16,overflow:"hidden",border:`1px solid ${G.border}`,background:G.card,maxHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {loading ? (
+            <div style={{padding:60,textAlign:"center",color:G.muted,fontSize:13}}>Cargando...</div>
+          ) : adUrl ? (
+            <img
+              src={adUrl}
+              alt="Publicidad MFA"
+              style={{width:"100%",maxHeight:"80vh",objectFit:"contain",display:"block"}}
+            />
+          ) : (
+            // Fallback si no hay imagen configurada
+            <div style={{padding:60,textAlign:"center"}}>
+              <div style={{fontSize:40,marginBottom:12}}>🏆</div>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:G.green}}>QUINIELA MFA</div>
+              <div style={{fontSize:14,color:G.gray,marginTop:6}}>Mundial 2026</div>
+            </div>
+          )}
+        </div>
+
+        {/* Barra de progreso */}
+        <div style={{marginTop:10,height:3,background:"rgba(255,255,255,.1)",borderRadius:3,overflow:"hidden"}}>
+          <div style={{height:"100%",background:G.green,borderRadius:3,width:`${((10-seconds)/10)*100}%`,transition:"width 1s linear"}}/>
+        </div>
+
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
