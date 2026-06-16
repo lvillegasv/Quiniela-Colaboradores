@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react"; prueba otra vez
+import React, { useEffect, useState, useMemo, useCallback } from "react"; prueba otra vez ds
 import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 import { Save, LogOut } from "lucide-react";
