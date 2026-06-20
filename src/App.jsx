@@ -1044,7 +1044,7 @@ export default function App() {
           {view==="standings"&&<StandingsView matches={matches} predictions={predictions} calcPoints={calcPoints} user={user}/>}
           {view==="profile"&&<ProfileView user={user} setUser={setUser} predictions={predictions} matches={matches} calcPoints={calcPoints}/>}
           {view==="chat"&&<ChatView user={user}/>}
-          {view==="admin"&&<AdminView matches={matches} updateResult={updateResult} publishResult={publishResult} clearResult={clearResult} lockMatch={lockMatch} adminResults={adminResults} calcPoints={calcPoints}/>}
+          {view==="admin"&&<AdminView matches={matches} updateResult={updateResult} publishResult={publishResult} clearResult={clearResult} lockMatch={lockMatch} adminResults={adminResults} setAdminResults={setAdminResults} calcPoints={calcPoints}/>}
           {view==="rules"&&<RulesView/>}
         </div>
 
@@ -2318,7 +2318,7 @@ function UserDetailAdmin({ selectedUser, matches, calcPoints, isUserAdmin, toggl
 }
 
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
-function AdminView({ matches, updateResult, publishResult, clearResult, lockMatch, adminResults, calcPoints }) {
+function AdminView({ matches, updateResult, publishResult, clearResult, lockMatch, adminResults, setAdminResults, calcPoints }) {
   const [section, setSection] = React.useState("scores");
   const [dbUsers, setDbUsers] = React.useState([]);
   const [loadingUsers, setLoadingUsers] = React.useState(false);
@@ -2419,7 +2419,18 @@ function AdminView({ matches, updateResult, publishResult, clearResult, lockMatc
                   <div style={{fontSize:18}}>{m.awayTeam.flag}</div>
                 </div>
                 {hasResult ? (
-                  <div style={{textAlign:"center",padding:"8px",background:"rgba(26,158,63,.08)",border:"1px solid rgba(26,158,63,.2)",borderRadius:8,fontSize:12,color:G.green}}>🔒 Resultado publicado y bloqueado</div>
+                  <div>
+                    <div style={{textAlign:"center",padding:"8px",background:"rgba(26,158,63,.08)",border:"1px solid rgba(26,158,63,.2)",borderRadius:8,fontSize:12,color:G.green,marginBottom:8}}>🔒 Resultado publicado y bloqueado</div>
+                    <button
+                      onClick={async()=>{
+                        const c = window.confirm("⚠️ Esto desbloqueará el marcador para editarlo. Los puntos se recalcularán cuando lo vuelvas a publicar. ¿Continuar?");
+                        if (!c) return;
+                        await supabase.from("resultados").update({ published:false, locked:true }).eq("match_id", m.id);
+                        setAdminResults(c=>({...c,[m.id]:{...c[m.id],published:false}}));
+                      }}
+                      style={{width:"100%",background:"rgba(255,180,0,.1)",border:"1px solid rgba(255,180,0,.3)",borderRadius:8,padding:"8px",fontSize:12,fontWeight:700,color:"#ffb400",cursor:"pointer"}}
+                    >✏️ Editar marcador</button>
+                  </div>
                 ) : (
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
                     <button onClick={()=>clearResult(m.id)} disabled={isLocked&&!adminResults[m.id]?.home} style={{background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.3)",borderRadius:8,padding:"8px",fontSize:11,fontWeight:700,color:"#ff5050",cursor:"pointer",opacity:isLocked&&!adminResults[m.id]?.home?.5:1}}>🗑️ Limpiar</button>
