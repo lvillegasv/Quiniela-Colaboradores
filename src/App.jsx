@@ -1905,6 +1905,7 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
     const load = async () => {
       const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado");
       const { data: resultados } = await supabase.from("resultados").select("*").eq("published", true);
+      const { data: knockoutResultados } = await supabase.from("knockout_resultados").select("*").eq("published", true);
 
       // Paginación — traer TODAS las predicciones de 1000 en 1000
       let allPreds = [];
@@ -1918,21 +1919,39 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
         from += pageSize;
       }
 
+      // Predicciones de eliminatorias — paginadas igual
+      let allKnockoutPreds = [];
+      from = 0;
+      while (true) {
+        const { data: page } = await supabase.from("knockout_predicciones").select("*").range(from, from + pageSize - 1);
+        if (!page || page.length === 0) break;
+        allKnockoutPreds = allKnockoutPreds.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+
       if (!usuarios) { setLoading(false); return; }
 
       // resMap con keys como Number
       const resMap = {};
       (resultados||[]).forEach(r => { resMap[Number(r.match_id)] = { home:Number(r.home), away:Number(r.away) }; });
+      const knockoutResMap = {};
+      (knockoutResultados||[]).forEach(r => { knockoutResMap[Number(r.match_id)] = { home:Number(r.home), away:Number(r.away) }; });
 
       const data = usuarios.filter(u => !u.bloqueado).map(u => {
         const userPreds = allPreds.filter(p => p.user_email === u.email);
+        const userKnockoutPreds = allKnockoutPreds.filter(p => p.user_email === u.email);
         let pts = 0;
         for (const p of userPreds) {
           const res = resMap[Number(p.match_id)];
           if (res) pts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
         }
+        for (const p of userKnockoutPreds) {
+          const res = knockoutResMap[Number(p.match_id)];
+          if (res) pts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
+        }
         const name = u.nombre && u.primer_apellido ? `${u.nombre} ${u.primer_apellido}` : "Colaborador";
-        return { name, email:u.email, pts, predCount:userPreds.length };
+        return { name, email:u.email, pts, predCount:userPreds.length + userKnockoutPreds.length };
       }).sort((a,b) => b.pts - a.pts || b.predCount - a.predCount);
 
       setStandings(data);
