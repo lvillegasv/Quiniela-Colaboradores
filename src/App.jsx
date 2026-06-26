@@ -854,6 +854,14 @@ export default function App() {
     setKnockoutResults(c=>{const u={...c};delete u[matchId];return u;});
   };
 
+  const unpublishKnockoutResult = async (matchId) => {
+    if (!isAdmin(user)) return;
+    const c = window.confirm("⚠️ Esto desbloqueará el marcador para editarlo. Los puntos se recalcularán cuando lo vuelvas a publicar. ¿Continuar?");
+    if (!c) return;
+    await supabase.from("knockout_resultados").update({ published: false }).eq("match_id", matchId);
+    setKnockoutResults(c=>({...c,[matchId]:{...c[matchId],published:false}}));
+  };
+
   const saveKnockoutPredictions = async () => {
     const now = new Date();
     const entries = Object.entries(knockoutPredictions)
@@ -1223,7 +1231,7 @@ export default function App() {
           {view==="predictions"&&<PredictionsView matches={matches} predictions={predictions} setPredictions={setPredictions} savePredictions={savePredictions} predictionStatus={predictionStatus} setPredictionStatus={setPredictionStatus} matchFilter={matchFilter} setMatchFilter={setMatchFilter} calcPoints={calcPoints} user={user}/>}
           {view==="results"&&<ResultsView matches={matches} predictions={predictions} calcPoints={calcPoints}/>}
           {view==="standings"&&<StandingsView matches={matches} predictions={predictions} calcPoints={calcPoints} user={user}/>}
-          {view==="knockout"&&<KnockoutView matches={knockoutMatches} predictions={knockoutPredictions} setPredictions={setKnockoutPredictions} savePredictions={saveKnockoutPredictions} predictionStatus={knockoutPredStatus} setPredictionStatus={setKnockoutPredStatus} calcPoints={calcPoints} user={user} isAdminUser={isAdminUser} knockoutEnabled={knockoutEnabled} toggleKnockoutEnabled={toggleKnockoutEnabled} saveKnockoutTeam={saveKnockoutTeam} updateKnockoutResult={updateKnockoutResult} publishKnockoutResult={publishKnockoutResult} lockKnockoutMatch={lockKnockoutMatch} clearKnockoutResult={clearKnockoutResult} knockoutResults={knockoutResults}/>}
+          {view==="knockout"&&<KnockoutView matches={knockoutMatches} predictions={knockoutPredictions} setPredictions={setKnockoutPredictions} savePredictions={saveKnockoutPredictions} predictionStatus={knockoutPredStatus} setPredictionStatus={setKnockoutPredStatus} calcPoints={calcPoints} user={user} isAdminUser={isAdminUser} knockoutEnabled={knockoutEnabled} toggleKnockoutEnabled={toggleKnockoutEnabled} saveKnockoutTeam={saveKnockoutTeam} updateKnockoutResult={updateKnockoutResult} publishKnockoutResult={publishKnockoutResult} lockKnockoutMatch={lockKnockoutMatch} clearKnockoutResult={clearKnockoutResult} unpublishKnockoutResult={unpublishKnockoutResult} knockoutResults={knockoutResults}/>}
           {view==="profile"&&<ProfileView user={user} setUser={setUser} predictions={predictions} matches={matches} calcPoints={calcPoints}/>}
           {view==="chat"&&<ChatView user={user}/>}
           {view==="admin"&&<AdminView matches={matches} updateResult={updateResult} publishResult={publishResult} clearResult={clearResult} lockMatch={lockMatch} adminResults={adminResults} setAdminResults={setAdminResults} calcPoints={calcPoints}/>}
@@ -1619,7 +1627,7 @@ function SoporteAdmin() {
 
 // ─── PREDICCIONES ─────────────────────────────────────────────────────────────
 // ─── ELIMINATORIAS ────────────────────────────────────────────────────────────
-function KnockoutView({ matches, predictions, setPredictions, savePredictions, predictionStatus, setPredictionStatus, calcPoints, user, isAdminUser, knockoutEnabled, toggleKnockoutEnabled, saveKnockoutTeam, updateKnockoutResult, publishKnockoutResult, lockKnockoutMatch, clearKnockoutResult, knockoutResults }) {
+function KnockoutView({ matches, predictions, setPredictions, savePredictions, predictionStatus, setPredictionStatus, calcPoints, user, isAdminUser, knockoutEnabled, toggleKnockoutEnabled, saveKnockoutTeam, updateKnockoutResult, publishKnockoutResult, lockKnockoutMatch, clearKnockoutResult, unpublishKnockoutResult, knockoutResults }) {
   const [adminMode, setAdminMode] = React.useState(false);
 
   const roundLabels = { "32avos":"🏆 Ronda de 32", "16avos":"⚔️ Octavos de Final", "cuartos":"🔥 Cuartos de Final", "semis":"⭐ Semifinales", "3er puesto":"🥉 Tercer Puesto", "final":"🏆 Gran Final" };
@@ -1708,7 +1716,10 @@ function KnockoutView({ matches, predictions, setPredictions, savePredictions, p
                         <input disabled={knockoutResults[m.id]?.locked} value={knockoutResults[m.id]?.away?.toString()||""} onChange={e=>updateKnockoutResult(m.id,"away",e.target.value)} inputMode="numeric" style={{...inp,textAlign:"center",fontSize:18,fontWeight:900,padding:"6px 4px",opacity:knockoutResults[m.id]?.locked?.5:1}} placeholder="0"/>
                       </div>
                       {knockoutResults[m.id]?.published ? (
-                        <div style={{textAlign:"center",padding:"7px",background:"rgba(26,158,63,.08)",fontSize:11,color:G.green,borderRadius:8}}>🔒 Publicado</div>
+                        <div>
+                          <div style={{textAlign:"center",padding:"7px",background:"rgba(26,158,63,.08)",fontSize:11,color:G.green,borderRadius:8,marginBottom:6}}>🔒 Publicado</div>
+                          <button onClick={()=>unpublishKnockoutResult(m.id)} style={{width:"100%",background:"rgba(255,180,0,.1)",border:"1px solid rgba(255,180,0,.3)",borderRadius:6,padding:"7px",fontSize:11,fontWeight:700,color:"#ffb400",cursor:"pointer"}}>✏️ Editar marcador</button>
+                        </div>
                       ) : (
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
                           <button onClick={()=>clearKnockoutResult(m.id)} style={{background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.3)",borderRadius:6,padding:"6px",fontSize:10,fontWeight:700,color:"#ff5050",cursor:"pointer"}}>🗑️</button>
