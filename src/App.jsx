@@ -1624,7 +1624,18 @@ function KnockoutView({ matches, predictions, setPredictions, savePredictions, p
 
   const roundLabels = { "32avos":"🏆 Ronda de 32", "16avos":"⚔️ Octavos de Final", "cuartos":"🔥 Cuartos de Final", "semis":"⭐ Semifinales", "3er puesto":"🥉 Tercer Puesto", "final":"🏆 Gran Final" };
   const roundOrder = ["32avos","16avos","cuartos","semis","3er puesto","final"];
+  const toSortMs = (m) => {
+    const months = { "JUN": 5, "JUL": 6 };
+    const [day, monthStr] = m.date.split(" ");
+    const [hourStr, minuteStr] = m.time.replace(" PM","").replace(" AM","").split(":");
+    let hour = parseInt(hourStr);
+    const isPM = m.time.includes("PM");
+    if (isPM && hour !== 12) hour += 12;
+    if (!isPM && hour === 12) hour = 0;
+    return new Date(Date.UTC(2026, months[monthStr], parseInt(day), hour, parseInt(minuteStr))).getTime();
+  };
   const groups = matches.reduce((acc,m)=>{ (acc[m.round]=acc[m.round]||[]).push(m); return acc; },{});
+  Object.values(groups).forEach(arr => arr.sort((a,b)=>toSortMs(a)-toSortMs(b)));
 
   if (!knockoutEnabled && !isAdminUser) {
     return (
