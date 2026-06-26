@@ -1229,10 +1229,10 @@ export default function App() {
 
         <div>
           {view==="predictions"&&<PredictionsView matches={matches} predictions={predictions} setPredictions={setPredictions} savePredictions={savePredictions} predictionStatus={predictionStatus} setPredictionStatus={setPredictionStatus} matchFilter={matchFilter} setMatchFilter={setMatchFilter} calcPoints={calcPoints} user={user}/>}
-          {view==="results"&&<ResultsView matches={matches} predictions={predictions} calcPoints={calcPoints}/>}
+          {view==="results"&&<ResultsView matches={matches} predictions={predictions} calcPoints={calcPoints} knockoutMatches={knockoutMatches} knockoutPredictions={knockoutPredictions}/>}
           {view==="standings"&&<StandingsView matches={matches} predictions={predictions} calcPoints={calcPoints} user={user}/>}
           {view==="knockout"&&<KnockoutView matches={knockoutMatches} predictions={knockoutPredictions} setPredictions={setKnockoutPredictions} savePredictions={saveKnockoutPredictions} predictionStatus={knockoutPredStatus} setPredictionStatus={setKnockoutPredStatus} calcPoints={calcPoints} user={user} isAdminUser={isAdminUser} knockoutEnabled={knockoutEnabled} toggleKnockoutEnabled={toggleKnockoutEnabled} saveKnockoutTeam={saveKnockoutTeam} updateKnockoutResult={updateKnockoutResult} publishKnockoutResult={publishKnockoutResult} lockKnockoutMatch={lockKnockoutMatch} clearKnockoutResult={clearKnockoutResult} unpublishKnockoutResult={unpublishKnockoutResult} knockoutResults={knockoutResults}/>}
-          {view==="profile"&&<ProfileView user={user} setUser={setUser} predictions={predictions} matches={matches} calcPoints={calcPoints}/>}
+          {view==="profile"&&<ProfileView user={user} setUser={setUser} predictions={predictions} matches={matches} calcPoints={calcPoints} knockoutMatches={knockoutMatches} knockoutPredictions={knockoutPredictions}/>}
           {view==="chat"&&<ChatView user={user}/>}
           {view==="admin"&&<AdminView matches={matches} updateResult={updateResult} publishResult={publishResult} clearResult={clearResult} lockMatch={lockMatch} adminResults={adminResults} setAdminResults={setAdminResults} calcPoints={calcPoints}/>}
           {view==="rules"&&<RulesView/>}
@@ -1843,55 +1843,92 @@ function PredictionsView({ matches, predictions, setPredictions, savePredictions
 }
 
 // ─── RESULTADOS ───────────────────────────────────────────────────────────────
-function ResultsView({ matches, predictions, calcPoints }) {
+function ResultsView({ matches, predictions, calcPoints, knockoutMatches, knockoutPredictions }) {
   const played=matches.filter(m=>m.result);
-  const total=played.reduce((t,m)=>t+calcPoints(predictions[m.id]||{},m.result),0);
-  const done=played.filter(m=>{const p=predictions[m.id]||{};return p.home!==undefined&&p.home!==""&&p.away!==undefined&&p.away!==""}).length;
+  const knockoutPlayed=(knockoutMatches||[]).filter(m=>m.result);
+  const total=played.reduce((t,m)=>t+calcPoints(predictions[m.id]||{},m.result),0)
+    + knockoutPlayed.reduce((t,m)=>t+calcPoints((knockoutPredictions||{})[m.id]||{},m.result),0);
+  const done=played.filter(m=>{const p=predictions[m.id]||{};return p.home!==undefined&&p.home!==""&&p.away!==undefined&&p.away!==""}).length
+    + knockoutPlayed.filter(m=>{const p=(knockoutPredictions||{})[m.id]||{};return p.home!==undefined&&p.home!==""&&p.away!==undefined&&p.away!==""}).length;
+  const totalPlayed = played.length + knockoutPlayed.length;
   return (
     <div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:24}} className="results-stats">
-        {[["Puntos ganados",`${total} pts`],["Partidos jugados",played.length],["Predicciones hechas",`${done}/${played.length}`]].map(([t,v])=>(
+        {[["Puntos ganados",`${total} pts`],["Partidos jugados",totalPlayed],["Predicciones hechas",`${done}/${totalPlayed}`]].map(([t,v])=>(
           <div key={t} style={{...card,padding:20,textAlign:"center",borderRadius:12}}>
             <div style={{fontSize:12,color:G.muted,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>{t}</div>
             <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,color:G.green}}>{v}</div>
           </div>
         ))}
       </div>
-      {played.length === 0 ? (
+      {totalPlayed === 0 ? (
         <div style={{...card,padding:40,textAlign:"center",borderRadius:12}}>
           <div style={{fontSize:40,marginBottom:16}}>⏳</div>
           <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:700,color:G.green}}>Aún no hay resultados publicados</div>
           <div style={{fontSize:13,color:G.muted,marginTop:8}}>Los resultados aparecerán aquí después de cada partido.</div>
         </div>
-      ) : played.map(m=>{
-        const pred=predictions[m.id]||{};
-        const pts=calcPoints(pred,m.result);
-        const hasPred=pred.home!==undefined&&pred.home!==""&&pred.away!==undefined&&pred.away!=="";
-        return (
-          <div key={m.id} style={{...card,padding:16,borderRadius:12,marginBottom:12,border:`1px solid ${pts===5?"rgba(26,158,63,.4)":pts>0?"rgba(255,180,0,.3)":G.border}`}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,alignItems:"center"}} className="result-row">
-              <div>
-                <div style={{fontSize:11,color:G.muted,marginBottom:4}}>Grupo {m.group} · {m.date}</div>
-                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700}}>{m.homeTeam.flag} {m.home} vs {m.away} {m.awayTeam.flag}</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,textAlign:"center"}} className="result-scores">
-                <div style={{background:G.card2,borderRadius:8,padding:"8px 0"}}>
-                  <div style={{fontSize:9,color:G.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Mi predicción</div>
-                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:hasPred?"#fff":G.muted}}>{hasPred?`${pred.home} - ${pred.away}`:"—"}</div>
+      ) : (
+        <>
+          {played.map(m=>{
+            const pred=predictions[m.id]||{};
+            const pts=calcPoints(pred,m.result);
+            const hasPred=pred.home!==undefined&&pred.home!==""&&pred.away!==undefined&&pred.away!=="";
+            return (
+              <div key={"g"+m.id} style={{...card,padding:16,borderRadius:12,marginBottom:12,border:`1px solid ${pts===5?"rgba(26,158,63,.4)":pts>0?"rgba(255,180,0,.3)":G.border}`}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,alignItems:"center"}} className="result-row">
+                  <div>
+                    <div style={{fontSize:11,color:G.muted,marginBottom:4}}>Grupo {m.group} · {m.date}</div>
+                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700}}>{m.homeTeam.flag} {m.home} vs {m.away} {m.awayTeam.flag}</div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,textAlign:"center"}} className="result-scores">
+                    <div style={{background:G.card2,borderRadius:8,padding:"8px 0"}}>
+                      <div style={{fontSize:9,color:G.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Mi predicción</div>
+                      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:hasPred?"#fff":G.muted}}>{hasPred?`${pred.home} - ${pred.away}`:"—"}</div>
+                    </div>
+                    <div style={{background:G.card2,borderRadius:8,padding:"8px 0"}}>
+                      <div style={{fontSize:9,color:G.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Resultado oficial</div>
+                      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:G.green}}>{m.result.home} - {m.result.away}</div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:40,fontWeight:900,color:pts===5?G.green:pts>0?"#ffb400":G.muted}}>{pts}</div>
+                    <div style={{fontSize:11,color:G.muted}}>puntos</div>
+                  </div>
                 </div>
-                <div style={{background:G.card2,borderRadius:8,padding:"8px 0"}}>
-                  <div style={{fontSize:9,color:G.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Resultado oficial</div>
-                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:G.green}}>{m.result.home} - {m.result.away}</div>
+              </div>
+            );
+          })}
+          {knockoutPlayed.map(m=>{
+            const pred=(knockoutPredictions||{})[m.id]||{};
+            const pts=calcPoints(pred,m.result);
+            const hasPred=pred.home!==undefined&&pred.home!==""&&pred.away!==undefined&&pred.away!=="";
+            return (
+              <div key={"k"+m.id} style={{...card,padding:16,borderRadius:12,marginBottom:12,border:`1px solid ${pts===5?"rgba(26,158,63,.4)":pts>0?"rgba(255,180,0,.3)":G.border}`}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,alignItems:"center"}} className="result-row">
+                  <div>
+                    <div style={{fontSize:11,color:G.muted,marginBottom:4}}>🏆 Eliminatoria · {m.date}</div>
+                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700}}>{m.homeName} vs {m.awayName}</div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,textAlign:"center"}} className="result-scores">
+                    <div style={{background:G.card2,borderRadius:8,padding:"8px 0"}}>
+                      <div style={{fontSize:9,color:G.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Mi predicción</div>
+                      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:hasPred?"#fff":G.muted}}>{hasPred?`${pred.home} - ${pred.away}`:"—"}</div>
+                    </div>
+                    <div style={{background:G.card2,borderRadius:8,padding:"8px 0"}}>
+                      <div style={{fontSize:9,color:G.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Resultado oficial</div>
+                      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:G.green}}>{m.result.home} - {m.result.away}</div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:40,fontWeight:900,color:pts===5?G.green:pts>0?"#ffb400":G.muted}}>{pts}</div>
+                    <div style={{fontSize:11,color:G.muted}}>puntos</div>
+                  </div>
                 </div>
               </div>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:40,fontWeight:900,color:pts===5?G.green:pts>0?"#ffb400":G.muted}}>{pts}</div>
-                <div style={{fontSize:11,color:G.muted}}>puntos</div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
@@ -2017,7 +2054,7 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
 }
 
 // ─── PERFIL ───────────────────────────────────────────────────────────────────
-function ProfileView({ user, predictions, matches, calcPoints }) {
+function ProfileView({ user, predictions, matches, calcPoints, knockoutMatches, knockoutPredictions }) {
   const [currentPassword, setCurrentPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
@@ -2073,7 +2110,14 @@ function ProfileView({ user, predictions, matches, calcPoints }) {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:12}}>
           <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,color:G.green,textTransform:"uppercase"}}>Resumen de mis predicciones</div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}} className="profile-stats">
-            {[["Predicciones",Object.keys(predictions).length],["Con resultado",matches.filter(m=>m.result).length],["Puntos",matches.filter(m=>m.result).reduce((t,m)=>t+calcPoints(predictions[m.id]||{},m.result),0)+" pts"]].map(([l,v])=>(
+            {[
+              ["Predicciones",Object.keys(predictions).length + Object.keys(knockoutPredictions||{}).length],
+              ["Con resultado",matches.filter(m=>m.result).length + (knockoutMatches||[]).filter(m=>m.result).length],
+              ["Puntos",
+                matches.filter(m=>m.result).reduce((t,m)=>t+calcPoints(predictions[m.id]||{},m.result),0)
+                + (knockoutMatches||[]).filter(m=>m.result).reduce((t,m)=>t+calcPoints((knockoutPredictions||{})[m.id]||{},m.result),0)
+                +" pts"],
+            ].map(([l,v])=>(
               <div key={l} style={{background:G.card2,border:`1px solid ${G.border}`,borderRadius:10,padding:"10px 16px",textAlign:"center",minWidth:110}}>
                 <div style={{fontSize:10,color:G.muted,textTransform:"uppercase",letterSpacing:1}}>{l}</div>
                 <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:G.green,marginTop:4}}>{v}</div>
