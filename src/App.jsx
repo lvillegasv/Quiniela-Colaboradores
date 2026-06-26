@@ -2140,9 +2140,31 @@ function ProfileView({ user, predictions, matches, calcPoints, knockoutMatches, 
                 const hasPred=pred.home!==undefined&&pred.home!==""&&pred.away!==undefined&&pred.away!=="";
                 const pts=m.result?calcPoints(pred,m.result):null;
                 return (
-                  <tr key={m.id} style={{borderBottom:`1px solid ${G.border}`,background:pts===5?"rgba(26,158,63,.05)":"transparent"}}>
+                  <tr key={"g"+m.id} style={{borderBottom:`1px solid ${G.border}`,background:pts===5?"rgba(26,158,63,.05)":"transparent"}}>
                     <td style={{padding:"10px 12px",fontSize:13,color:G.muted,fontWeight:700}}>{m.group}</td>
                     <td style={{padding:"10px 12px",fontSize:13}}>{m.homeTeam.flag} {m.home} vs {m.away} {m.awayTeam.flag}</td>
+                    <td style={{padding:"10px 12px",fontSize:12,color:G.muted,whiteSpace:"nowrap"}}>{m.date} {m.time}</td>
+                    <td style={{padding:"10px 12px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,color:hasPred?"#fff":G.muted}}>{hasPred?`${pred.home} - ${pred.away}`:"—"}</td>
+                    <td style={{padding:"10px 12px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,color:G.green}}>{m.result?`${m.result.home} - ${m.result.away}`:"—"}</td>
+                    <td style={{padding:"10px 12px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:900,color:pts===5?G.green:pts>0?"#ffb400":G.muted}}>{pts!==null?`${pts} pts`:"—"}</td>
+                    <td style={{padding:"10px 12px"}}>
+                      <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:100,border:"1px solid",
+                        ...(m.status==="Abierto"?{borderColor:"rgba(26,158,63,.4)",background:"rgba(26,158,63,.1)",color:G.green}:
+                           m.status==="Cierra pronto"?{borderColor:"rgba(255,180,0,.4)",background:"rgba(255,180,0,.1)",color:"#ffb400"}:
+                           {borderColor:"rgba(255,80,80,.4)",background:"rgba(255,80,80,.1)",color:"#ff5050"})
+                      }}>{m.status}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {(knockoutMatches||[]).filter(m=>m.homeName && m.awayName).map(m=>{
+                const pred=(knockoutPredictions||{})[m.id]||{};
+                const hasPred=pred.home!==undefined&&pred.home!==""&&pred.away!==undefined&&pred.away!=="";
+                const pts=m.result?calcPoints(pred,m.result):null;
+                return (
+                  <tr key={"k"+m.id} style={{borderBottom:`1px solid ${G.border}`,background:pts===5?"rgba(26,158,63,.05)":"transparent"}}>
+                    <td style={{padding:"10px 12px",fontSize:13,color:"#ffb400",fontWeight:700}}>🏆</td>
+                    <td style={{padding:"10px 12px",fontSize:13}}>{m.homeName} vs {m.awayName}</td>
                     <td style={{padding:"10px 12px",fontSize:12,color:G.muted,whiteSpace:"nowrap"}}>{m.date} {m.time}</td>
                     <td style={{padding:"10px 12px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,color:hasPred?"#fff":G.muted}}>{hasPred?`${pred.home} - ${pred.away}`:"—"}</td>
                     <td style={{padding:"10px 12px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,color:G.green}}>{m.result?`${m.result.home} - ${m.result.away}`:"—"}</td>
