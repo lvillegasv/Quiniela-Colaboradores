@@ -1940,7 +1940,7 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
 
   React.useEffect(() => {
     const load = async () => {
-      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado");
+      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado, bono_campeon, bono_goleador, bono_mvp, bonos_completado");
       const { data: resultados } = await supabase.from("resultados").select("*").eq("published", true);
       const { data: knockoutResultados } = await supabase.from("knockout_resultados").select("*").eq("published", true);
 
@@ -1988,7 +1988,10 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
           if (res) pts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
         }
         const name = u.nombre && u.primer_apellido ? `${u.nombre} ${u.primer_apellido}` : "Colaborador";
-        return { name, email:u.email, pts, predCount:userPreds.length + userKnockoutPreds.length };
+        return {
+          name, email:u.email, pts, predCount:userPreds.length + userKnockoutPreds.length,
+          bonoCampeon: u.bono_campeon || null, bonoGoleador: u.bono_goleador || null, bonoMvp: u.bono_mvp || null, bonosCompletado: !!u.bonos_completado,
+        };
       }).sort((a,b) => b.pts - a.pts || b.predCount - a.predCount);
 
       setStandings(data);
@@ -2021,11 +2024,11 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
         <div style={{...card,padding:40,textAlign:"center",color:G.muted,borderRadius:12}}>Cargando posiciones...</div>
       ) : (
         <div style={{overflowX:"auto"}} className="standings-table">
-          <table style={{width:"100%",borderCollapse:"collapse",minWidth:480}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}>
             <thead>
               <tr style={{background:G.card2}}>
-                {["#","Colaborador","Predicciones","Puntos"].map(h=>(
-                  <th key={h} style={{padding:"12px 16px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,color:G.muted}}>{h}</th>
+                {["#","Colaborador","Predicciones","🏆 Campeón","⚽ Goleador","🌟 MVP","Puntos"].map(h=>(
+                  <th key={h} style={{padding:"12px 16px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,color:G.muted,whiteSpace:"nowrap"}}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -2042,6 +2045,9 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
                     </div>
                   </td>
                   <td style={{padding:"12px 16px",fontSize:13,color:G.gray}}>{s.predCount}</td>
+                  <td style={{padding:"12px 16px",fontSize:13,color:s.bonoCampeon?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoCampeon||"—"}</td>
+                  <td style={{padding:"12px 16px",fontSize:13,color:s.bonoGoleador?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoGoleador||"—"}</td>
+                  <td style={{padding:"12px 16px",fontSize:13,color:s.bonoMvp?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoMvp||"—"}</td>
                   <td style={{padding:"12px 16px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:i<3?G.green:"#fff"}}>{s.pts} pts</td>
                 </tr>
               ))}
