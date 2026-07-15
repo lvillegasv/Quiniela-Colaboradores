@@ -960,6 +960,7 @@ export default function App() {
     return (
       <div style={{background:G.bg,minHeight:"100vh",color:"#fff"}}>
         <style>{GLOBAL_CSS}</style>
+        <UpdateChecker/>
         <div style={{maxWidth:1400,margin:"0 auto",padding:"24px 20px"}} className="main-padding">
           {/* Header */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingBottom:28}}>
@@ -1155,6 +1156,7 @@ export default function App() {
   return (
     <div style={{background:G.bg,minHeight:"100vh",color:"#fff"}}>
       <style>{GLOBAL_CSS}</style>
+      <UpdateChecker/>
       <div style={{maxWidth:1200,margin:"0 auto",padding:"24px 20px"}} className="main-padding">
 
         {/* Header */}
@@ -1246,6 +1248,46 @@ export default function App() {
         )}
         {showSoporte && !isAdminUser && <SoporteFloat user={user} onClose={()=>setShowSoporte(false)}/>}
       </div>
+    </div>
+  );
+}
+
+// ─── UPDATE CHECKER ────────────────────────────────────────────────────────────
+// Detecta cuando se publica una nueva versión (cambia el HTML servido desde Vercel,
+// que referencia archivos con hash distinto tras cada build) y avisa al usuario
+// con un banner para que actualice sin perder lo que estaba haciendo.
+function UpdateChecker() {
+  const [updateAvailable, setUpdateAvailable] = React.useState(false);
+  const initialHtmlRef = React.useRef(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch("/", { cache: "no-store" });
+        const html = await res.text();
+        if (initialHtmlRef.current === null) {
+          initialHtmlRef.current = html;
+          return;
+        }
+        if (!cancelled && html !== initialHtmlRef.current) {
+          setUpdateAvailable(true);
+        }
+      } catch (_) {}
+    };
+    check();
+    const interval = setInterval(check, 3 * 60 * 1000); // revisa cada 3 minutos
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  if (!updateAvailable) return null;
+
+  return (
+    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:20000,background:G.green,color:"#fff",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:14,fontSize:13,fontWeight:700,boxShadow:"0 2px 12px rgba(0,0,0,.4)"}}>
+      <span>🔄 Hay una nueva versión de la quiniela disponible.</span>
+      <button onClick={()=>window.location.reload()} style={{background:"#fff",color:G.green,border:"none",borderRadius:6,padding:"6px 16px",fontWeight:900,cursor:"pointer",fontSize:12,textTransform:"uppercase",letterSpacing:.5}}>
+        Actualizar ahora
+      </button>
     </div>
   );
 }
