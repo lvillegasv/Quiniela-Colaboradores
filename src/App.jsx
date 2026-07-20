@@ -125,6 +125,30 @@ function calcPoints(pred, result) {
   return pts;
 }
 
+// Premios del torneo (Campeón / Goleador / MVP) — se guardan en la tabla "config"
+// (mismo patrón que knockout_enabled) y solo suman puntos una vez publicados.
+async function fetchPremiosConfig() {
+  const { data } = await supabase.from("config").select("*").in("key", ["premio_campeon","premio_goleador","premio_mvp","premios_publicados"]);
+  const map = {};
+  (data||[]).forEach(r => { map[r.key] = r.value; });
+  return {
+    campeon: map.premio_campeon || "",
+    goleador: map.premio_goleador || "",
+    mvp: map.premio_mvp || "",
+    publicados: map.premios_publicados === "true" || map.premios_publicados === true,
+  };
+}
+
+function bonusPoints(u, premios) {
+  if (!premios || !premios.publicados) return 0;
+  const norm = s => String(s||"").trim().toLowerCase();
+  let pts = 0;
+  if (premios.campeon && u.bono_campeon && norm(u.bono_campeon) === norm(premios.campeon)) pts += 20;
+  if (premios.goleador && u.bono_goleador && norm(u.bono_goleador) === norm(premios.goleador)) pts += 10;
+  if (premios.mvp && u.bono_mvp && norm(u.bono_mvp) === norm(premios.mvp)) pts += 10;
+  return pts;
+}
+
 // ─── COMPONENTES BASE ─────────────────────────────────────────────────────────
 function Field({ label, value, onChange, placeholder, type = "text" }) {
   return (
@@ -552,8 +576,9 @@ export default function App() {
   useEffect(() => {
     if (user) return;
     const load = async () => {
-      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado");
+      const { data: usuarios } = await supabase.from("usuarios").select("email, nombre, primer_apellido, bloqueado, bono_campeon, bono_goleador, bono_mvp");
       const { data: resultados } = await supabase.from("resultados").select("*").eq("published", true);
+      const premios = await fetchPremiosConfig();
 
       // Paginación
       let allPreds = [];
@@ -577,6 +602,7 @@ export default function App() {
           const res = resMap[Number(p.match_id)];
           if (res) pts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
         }
+        pts += bonusPoints(u, premios);
         const name = u.nombre && u.primer_apellido ? `${u.nombre} ${u.primer_apellido}` : "Colaborador";
         return { name, pts, preds: userPreds.length };
       }).sort((a,b) => b.pts - a.pts || b.preds - a.preds).slice(0, 10);
@@ -2010,6 +2036,7 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
       }
 
       if (!usuarios) { setLoading(false); return; }
+      const premios = await fetchPremiosConfig();
 
       // resMap con keys como Number
       const resMap = {};
@@ -2020,19 +2047,25 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
       const data = usuarios.filter(u => !u.bloqueado).map(u => {
         const userPreds = allPreds.filter(p => p.user_email === u.email);
         const userKnockoutPreds = allKnockoutPreds.filter(p => p.user_email === u.email);
-        let pts = 0;
+        let matchPts = 0;
         for (const p of userPreds) {
           const res = resMap[Number(p.match_id)];
-          if (res) pts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
+          if (res) matchPts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
         }
         for (const p of userKnockoutPreds) {
           const res = knockoutResMap[Number(p.match_id)];
-          if (res) pts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
+          if (res) matchPts += calcPoints({ home: String(p.home), away: String(p.away) }, res);
         }
+        const bonusPts = bonusPoints(u, premios);
+        const pts = matchPts + bonusPts;
         const name = u.nombre && u.primer_apellido ? `${u.nombre} ${u.primer_apellido}` : "Colaborador";
+        const norm = s => String(s||"").trim().toLowerCase();
         return {
-          name, email:u.email, pts, predCount:userPreds.length + userKnockoutPreds.length,
+          name, email:u.email, matchPts, bonusPts, pts, predCount:userPreds.length + userKnockoutPreds.length,
           bonoCampeon: u.bono_campeon || null, bonoGoleador: u.bono_goleador || null, bonoMvp: u.bono_mvp || null, bonosCompletado: !!u.bonos_completado,
+          aciertoCampeon: premios.publicados && premios.campeon && norm(u.bono_campeon)===norm(premios.campeon),
+          aciertoGoleador: premios.publicados && premios.goleador && norm(u.bono_goleador)===norm(premios.goleador),
+          aciertoMvp: premios.publicados && premios.mvp && norm(u.bono_mvp)===norm(premios.mvp),
         };
       }).sort((a,b) => b.pts - a.pts || b.predCount - a.predCount);
 
@@ -2058,7 +2091,8 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
           </div>
           <div style={{textAlign:"right"}}>
             <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:36,fontWeight:900,color:G.green}}>{myData.pts}</div>
-            <div style={{fontSize:11,color:G.muted}}>puntos</div>
+            <div style={{fontSize:11,color:G.muted}}>puntos totales</div>
+            <div style={{fontSize:11,color:G.gray,marginTop:2}}>{myData.matchPts} quiniela + {myData.bonusPts} bonificación</div>
           </div>
         </div>
       )}
@@ -2066,10 +2100,10 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
         <div style={{...card,padding:40,textAlign:"center",color:G.muted,borderRadius:12}}>Cargando posiciones...</div>
       ) : (
         <div style={{overflowX:"auto"}} className="standings-table">
-          <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:960}}>
             <thead>
               <tr style={{background:G.card2}}>
-                {["#","Colaborador","Predicciones","🏆 Campeón","⚽ Goleador","🌟 MVP","Puntos"].map(h=>(
+                {["#","Colaborador","Predicciones","🏆 Campeón","⚽ Goleador","🌟 MVP","Pts. Quiniela","Pts. Bonificación","Total"].map(h=>(
                   <th key={h} style={{padding:"12px 16px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,color:G.muted,whiteSpace:"nowrap"}}>{h}</th>
                 ))}
               </tr>
@@ -2087,9 +2121,11 @@ function StandingsView({ matches, predictions: myPreds, calcPoints, user }) {
                     </div>
                   </td>
                   <td style={{padding:"12px 16px",fontSize:13,color:G.gray}}>{s.predCount}</td>
-                  <td style={{padding:"12px 16px",fontSize:13,color:s.bonoCampeon?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoCampeon||"—"}</td>
-                  <td style={{padding:"12px 16px",fontSize:13,color:s.bonoGoleador?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoGoleador||"—"}</td>
-                  <td style={{padding:"12px 16px",fontSize:13,color:s.bonoMvp?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoMvp||"—"}</td>
+                  <td style={{padding:"12px 16px",fontSize:13,fontWeight:s.aciertoCampeon?700:400,color:s.aciertoCampeon?G.green:s.bonoCampeon?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoCampeon||"—"}{s.aciertoCampeon?" ✅":""}</td>
+                  <td style={{padding:"12px 16px",fontSize:13,fontWeight:s.aciertoGoleador?700:400,color:s.aciertoGoleador?G.green:s.bonoGoleador?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoGoleador||"—"}{s.aciertoGoleador?" ✅":""}</td>
+                  <td style={{padding:"12px 16px",fontSize:13,fontWeight:s.aciertoMvp?700:400,color:s.aciertoMvp?G.green:s.bonoMvp?"#fff":G.muted,whiteSpace:"nowrap"}}>{s.bonoMvp||"—"}{s.aciertoMvp?" ✅":""}</td>
+                  <td style={{padding:"12px 16px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:700,color:"#fff"}}>{s.matchPts}</td>
+                  <td style={{padding:"12px 16px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:700,color:s.bonusPts>0?G.green:G.muted}}>{s.bonusPts}</td>
                   <td style={{padding:"12px 16px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:i<3?G.green:"#fff"}}>{s.pts} pts</td>
                 </tr>
               ))}
@@ -2410,10 +2446,131 @@ function ChatView({ user }) {
 }
 
 // ─── PREDICCIONES ADMIN ───────────────────────────────────────────────────────
+function PremiosAdmin() {
+  const [campeon, setCampeon] = React.useState("");
+  const [goleador, setGoleador] = React.useState("");
+  const [mvp, setMvp] = React.useState("");
+  const [publicados, setPublicados] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [ganadores, setGanadores] = React.useState(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    const pm = await fetchPremiosConfig();
+    setCampeon(pm.campeon); setGoleador(pm.goleador); setMvp(pm.mvp); setPublicados(pm.publicados);
+    setLoading(false);
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const guardar = async (publicar) => {
+    if (publicar && (!campeon.trim() || !goleador.trim() || !mvp.trim())) {
+      alert("Completa Campeón, Goleador y MVP antes de publicar.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const rows = [
+        { key:"premio_campeon", value: campeon.trim() },
+        { key:"premio_goleador", value: goleador.trim() },
+        { key:"premio_mvp", value: mvp.trim() },
+        { key:"premios_publicados", value: String(publicar) },
+      ];
+      for (const row of rows) {
+        const { error } = await supabase.from("config").upsert(row, { onConflict:"key" });
+        if (error) throw new Error(error.message);
+      }
+      setPublicados(publicar);
+      if (publicar) {
+        const { data: usuarios } = await supabase.from("usuarios").select("nombre, primer_apellido, bono_campeon, bono_goleador, bono_mvp, bloqueado").eq("bloqueado", false);
+        const norm = s => String(s||"").trim().toLowerCase();
+        const g = {
+          campeon: (usuarios||[]).filter(u => norm(u.bono_campeon)===norm(campeon)),
+          goleador: (usuarios||[]).filter(u => norm(u.bono_goleador)===norm(goleador)),
+          mvp: (usuarios||[]).filter(u => norm(u.bono_mvp)===norm(mvp)),
+        };
+        setGanadores(g);
+      } else {
+        setGanadores(null);
+      }
+      alert(publicar ? "Premios publicados. Los puntos ya se están sumando a todos los que acertaron." : "Cambios guardados (sin publicar).");
+    } catch (err) {
+      alert("Error al guardar: " + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div style={{...card,padding:40,textAlign:"center",color:G.muted,borderRadius:12}}>Cargando premios...</div>;
+
+  return (
+    <div>
+      <div style={{...card,padding:16,borderRadius:12,marginBottom:16}}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:G.green,textTransform:"uppercase"}}>Premios del torneo</div>
+        <div style={{fontSize:13,color:G.muted,marginTop:4}}>Define el Campeón, Goleador y MVP real del Mundial. Al publicar, se suman automáticamente 20/10/10 pts a cada colaborador que acertó, en todas las tablas de posiciones.</div>
+      </div>
+
+      <div style={{...card,padding:20,borderRadius:12,display:"grid",gap:16,maxWidth:520}}>
+        <div>
+          <label style={{fontSize:11,fontWeight:700,color:G.gray,textTransform:"uppercase",display:"block",marginBottom:6}}>🏆 Campeón del torneo (20 pts)</label>
+          <input list="premios-campeon-list" value={campeon} onChange={e=>setCampeon(e.target.value)} placeholder="Selecciona la selección campeona..."
+            style={{width:"100%",background:G.card2,border:`1px solid ${G.border}`,borderRadius:8,padding:"10px 12px",color:"#fff",fontSize:14}}/>
+          <datalist id="premios-campeon-list">{SELECCIONES_MUNDIAL.map(s=><option key={s} value={s}/>)}</datalist>
+        </div>
+        <div>
+          <label style={{fontSize:11,fontWeight:700,color:G.gray,textTransform:"uppercase",display:"block",marginBottom:6}}>⚽ Goleador del torneo (10 pts)</label>
+          <input list="premios-goleador-list" value={goleador} onChange={e=>setGoleador(e.target.value)} placeholder="Nombre del jugador..."
+            style={{width:"100%",background:G.card2,border:`1px solid ${G.border}`,borderRadius:8,padding:"10px 12px",color:"#fff",fontSize:14}}/>
+          <datalist id="premios-goleador-list">{TOP_JUGADORES.map(s=><option key={s} value={s}/>)}</datalist>
+        </div>
+        <div>
+          <label style={{fontSize:11,fontWeight:700,color:G.gray,textTransform:"uppercase",display:"block",marginBottom:6}}>🌟 Mejor Jugador — MVP (10 pts)</label>
+          <input list="premios-mvp-list" value={mvp} onChange={e=>setMvp(e.target.value)} placeholder="Nombre del jugador..."
+            style={{width:"100%",background:G.card2,border:`1px solid ${G.border}`,borderRadius:8,padding:"10px 12px",color:"#fff",fontSize:14}}/>
+          <datalist id="premios-mvp-list">{TOP_JUGADORES.map(s=><option key={s} value={s}/>)}</datalist>
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:8,
+          background:publicados?"rgba(26,158,63,.1)":"rgba(255,180,0,.1)",
+          border:`1px solid ${publicados?"rgba(26,158,63,.3)":"rgba(255,180,0,.3)"}`}}>
+          <span style={{fontSize:13,color:publicados?G.green:"#ffb400",fontWeight:700}}>
+            {publicados ? "✅ Publicado — los puntos ya se están sumando" : "⏳ Sin publicar — aún no se suman puntos"}
+          </span>
+        </div>
+
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <button onClick={()=>guardar(false)} disabled={saving} style={{flex:1,minWidth:160,background:G.card2,border:`1px solid ${G.border}`,borderRadius:8,padding:"12px 16px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",opacity:saving?.6:1}}>
+            {saving?"Guardando...":"Guardar (sin publicar)"}
+          </button>
+          <button onClick={()=>guardar(true)} disabled={saving} style={{flex:1,minWidth:160,background:G.green,border:"none",borderRadius:8,padding:"12px 16px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",opacity:saving?.6:1}}>
+            {saving?"Guardando...":"Publicar y sumar puntos"}
+          </button>
+        </div>
+      </div>
+
+      {ganadores && (
+        <div style={{...card,padding:20,borderRadius:12,marginTop:16,maxWidth:520}}>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:900,color:G.green,textTransform:"uppercase",marginBottom:12}}>Quiénes acertaron</div>
+          {[["🏆 Campeón",ganadores.campeon],["⚽ Goleador",ganadores.goleador],["🌟 MVP",ganadores.mvp]].map(([label,list])=>(
+            <div key={label} style={{marginBottom:10}}>
+              <div style={{fontSize:12,color:G.gray,fontWeight:700,marginBottom:4}}>{label} ({list.length})</div>
+              <div style={{fontSize:13,color:list.length?"#fff":G.muted}}>
+                {list.length ? list.map(u=>`${u.nombre} ${u.primer_apellido}`).join(", ") : "Nadie acertó"}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PrediccionesAdmin({ matches, calcPoints }) {
   const [usuarios, setUsuarios] = React.useState([]);
   const [preds, setPreds] = React.useState({});
   const [resultados, setResultados] = React.useState({});
+  const [premios, setPremios] = React.useState({ campeon:"", goleador:"", mvp:"", publicados:false });
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
   const [vistaActiva, setVistaActiva] = React.useState("predicciones"); // "predicciones" | "bonos"
@@ -2422,6 +2579,8 @@ function PrediccionesAdmin({ matches, calcPoints }) {
     const load = async () => {
       const { data: us } = await supabase.from("usuarios").select("email, nombre, primer_apellido, segundo_apellido, departamento, bono_campeon, bono_goleador, bono_mvp, bonos_completado, bloqueado").order("nombre");
       const { data: re } = await supabase.from("resultados").select("*").eq("published", true);
+      const pm = await fetchPremiosConfig();
+      setPremios(pm);
 
       // Paginación
       let pr = [];
@@ -2467,6 +2626,8 @@ function PrediccionesAdmin({ matches, calcPoints }) {
       const r = resultados[Number(matchId)];
       if (p && r) pts += calcPoints({ home: String(p.home), away: String(p.away) }, r);
     }
+    const u = usuarios.find(x => x.email === email);
+    if (u) pts += bonusPoints(u, premios);
     return pts;
   };
 
@@ -2853,13 +3014,14 @@ function AdminView({ matches, updateResult, publishResult, clearResult, lockMatc
   return (
     <div>
       <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}} className="admin-tabs">
-        {[["scores","⚽ Marcadores"],["predicciones","📋 Predicciones"],["users","👥 Colaboradores"],["banners","🖼️ Banners"],["soporte","🎫 Soporte"],["log","🔍 Log"]].map(([s,l])=>(
+        {[["scores","⚽ Marcadores"],["predicciones","📋 Predicciones"],["premios","🏆 Premios"],["users","👥 Colaboradores"],["banners","🖼️ Banners"],["soporte","🎫 Soporte"],["log","🔍 Log"]].map(([s,l])=>(
           <button key={s} onClick={()=>setSection(s)} style={{padding:"10px 18px",borderRadius:8,border:`1px solid ${section===s?G.green:G.border}`,background:section===s?G.green:G.card,color:"#fff",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:700,letterSpacing:1,textTransform:"uppercase",cursor:"pointer"}}>{l}</button>
         ))}
       </div>
 
       {section==="banners" ? <BannersAdmin/> :
        section==="log" ? <AccessLogView/> :
+       section==="premios" ? <PremiosAdmin/> :
        section==="predicciones" ? <PrediccionesAdmin matches={matches} calcPoints={calcPoints}/> :
        section==="soporte" ? <SoporteAdmin/> :
        section==="scores" ? (
@@ -3062,7 +3224,7 @@ body { margin: 0; }
   .result-row { grid-template-columns: 1fr !important; gap: 10px !important; }
   .result-scores { grid-template-columns: 1fr 1fr !important; }
   .standings-table { overflow-x: auto !important; }
-  .standings-table table { min-width: 480px !important; }
+  .standings-table table { min-width: 960px !important; }
   .standings-table th, .standings-table td { padding: 10px 10px !important; font-size: 12px !important; }
   .profile-grid { grid-template-columns: 1fr !important; }
   .profile-summary { grid-column: 1 !important; }
